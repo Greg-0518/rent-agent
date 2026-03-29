@@ -11,4 +11,4 @@ def getModel(is_thinking: bool = False):
     return init_chat_model(model=model_name, temperature=0)
 
 
-model = getModel(True)
+model = getModel(False)
