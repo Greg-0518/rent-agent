@@ -59,7 +59,7 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
     """收集用户希望的推荐信息"""
 
     # 1.获取需要被解析的数据，最新的用户消息 + 用户的偏好数据
-    user_messages = filter_messages(state["messages"], include_type="human")
+    user_messages = filter_messages(state["messages"], include_types="human")
     pref = state.get("user_preferences")
     if pref and (pref["budget_min"] or pref["budget_max"]):
         # 偏好中包含最高和最低的预算
@@ -115,7 +115,7 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
         prompt += "如果您不想提供，你输出’**不提供**‘，我会根据已有信息为您推荐房源"
         # 中断，等待用户输入
         answer = interrupt(prompt)
-        if str(answer).strip == "不提供":
+        if str(answer).strip() == "不提供":
             if not updated_state.get("city"):
                 updated_state['city'] = "随机城市"
             if not updated_state.get("budget_min"):
@@ -210,13 +210,16 @@ db = SQLDatabase.from_uri(f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{d
 toolkit = SQLDatabaseToolkit(db=db, llm=model)
 tools = toolkit.get_tools()
 
+for tool in tools:
+    print(tool.name)
+
 # 节点：获取表信息
 get_schema_tool = next(tool for tool in tools if tool.name == 'sql_db_schema')
 get_schema_node = ToolNode([get_schema_tool], name='get_schema')
 
 # 节点：执行SQL查询
 run_query_tool = next(tool for tool in tools if tool.name == 'sql_db_query')
-run_query_node = ToolNode([get_schema_tool], name='run_query')
+run_query_node = ToolNode([run_query_tool], name='run_query')
 
 # 节点：获取全量表
 def list_tables(state: RecommendState):
@@ -244,3 +247,61 @@ def call_get_schema(state: RecommendState):
     llm_with_tools = model.bind_tools([get_schema_tool], tool_choice="any")
     response = llm_with_tools.invoke(state["messages"])   # AIMessage
     return {"messages": [response]}
+
+def generate_query(state: RecommendState):
+    generate_query_system_prompt = """
+    您是⼀个设计⽤于与SQL数据库交互的代理。
+    给定⼀个输⼊问题，创建⼀个语法正确的{dialect}查询来运⾏，然后查看查询的结果并返回答案。
+    需要根据rows from table的⽰例设置真实查询的值。
+    除⾮⽤⼾指定了他们希望获得的特定数量的⽰例，否则始终将查询限制为最多{top_k}个结果。
+    您可以按相关列对结果排序，以返回最感兴趣的结果。不要查询特定表中的所有列，只查询给定问题的
+    相关列。
+    不要对数据库做任何DML语句（INSERT， UPDATE， DELETE， DROP等)。
+    """
+    system_prompt = generate_query_system_prompt.format(
+        dialect=db.dialect,
+        top_k=state.get("room_count", 5)
+    )
+    system_message = SystemMessage(content=system_prompt)
+
+    llm_with_tools = model.bind_tools([run_query_tool])
+    # 将用户信息也加入到查询条件中
+    response = llm_with_tools.invoke([system_message] + state["messages"])
+    return {"messages": [response]}
+
+def check_query(state: RecommendState):
+    check_query_system_prompt = """
+    你是⼀个⾮常注重细节的SQL专家。仔细检查{dialect}查询中的常⻅错误，包括：
+    -使⽤NULL值的NOT IN
+    -在应该使⽤UNION ALL时使⽤UNION
+    -使⽤BETWEEN表⽰独占范围
+    -谓词中的数据类型不匹配
+    -正确引⽤标识符
+    -使⽤正确数量的函数参数
+    -转换为正确的数据类型
+    -使⽤合适的列进⾏连接
+    如果存在上述任何错误，请重写查询。如果没有错误，只需复制原始查询即可。
+    在运⾏此检查之后，您将调⽤适当的⼯具来执⾏查询。""".format(dialect=db.dialect)
+    system_message = SystemMessage(content=check_query_system_prompt)
+
+    # ⽣成⼈⼯⽤⼾消息进⾏检查
+    # 上⼀个节点是generate_query。如果⾛到这，必定调⽤了⼯具。这样获取到的SQL是准确的。
+    tool_call = state["messages"][-1].tool_calls[0]
+    # 将SQL当作⽤⼾消息传⼊进⾏检查
+    user_message = HumanMessage(content=tool_call["args"]["query"])
+
+    llm_with_tools = model.bind_tools([run_query_tool], tool_choice="any")
+    response = llm_with_tools.invoke([system_message, user_message])
+    response.id = state["messages"][-1].id
+
+    return {"messages": [response]}
+
+
+
+
+
+
+
+
+
+
