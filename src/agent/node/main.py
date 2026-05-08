@@ -13,8 +13,8 @@ from src.agent.state.main import State, NeedReserveOutput
 
 class UserMessage(BaseModel):
     """用户提问的消息摘要"""
-    type: Literal["recommend_house", "reserve_house", "get_info", "others"] = Field(
-        description="根据⽤⼾问题描述判断问题类型：推荐房源、预定房源、获取信息、其他内容"
+    type: Literal["recommend_house", "reserve_house", "get_info", "contract_audit", "others"] = Field(
+        description="根据用户问题描述判断问题类型：推荐房源、预定房源、获取信息、合同审核、其他内容"
     )
 
 
@@ -36,6 +36,9 @@ def identify_question(state: State):
 
 # 节点：查询持久化消息
 def get_store_info(state: State, runtime: Runtime[ContextSchema], *, store: BaseStore):
+    # 防御性检查：确保 context 不为 None
+    if runtime.context is None:
+        return {"user_preferences": None}
     # 搜索⽤⼾信息
     user_id = runtime.context.get("user_id")
     namespace = (user_id, "preferences")
@@ -86,3 +89,10 @@ def get_user_preferences(state: State):
     ])
 
     return {"messages": [response]}
+
+
+# 节点：从用户消息中提取合同文本
+def set_contract_text(state: State):
+    user_messages = filter_messages(state["messages"], include_types="human")
+    contract_text = user_messages[-1].content if user_messages else ""
+    return {"contract_text": contract_text}

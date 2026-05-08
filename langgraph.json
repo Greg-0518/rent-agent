@@ -5,7 +5,8 @@
     "agent": "./src/agent/graph.py:graph",
     "recommend_agent": "./src/agent/recommend.py:recommended_graph",
     "reserve_agent": "./src/agent/reserve.py:reserve_graph",
-    "extend_agent": "./src/agent/extend.py:extend_graph"
+    "extend_agent": "./src/agent/extend.py:extend_graph",
+    "contract_agent": "/src/agent/contract.py:contract_graph"
   },
   "env": ".env",
   "image_distro": "wolfi"
