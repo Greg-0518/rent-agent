@@ -191,6 +191,9 @@ cython_debug/
 # .vscode/
 
 # Ruff stuff:
+# Storage (built indices, cached data)
+storage/
+
 .ruff_cache/
 
 # PyPI configuration file
