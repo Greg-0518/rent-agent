@@ -4,7 +4,7 @@
 
 from typing import List, Optional
 from pydantic import BaseModel, Field
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, filter_messages
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
 
@@ -84,9 +84,12 @@ def extract_clauses(contract_text: str) -> List[Clause]:
 
     human_message = HumanMessage(content=f"请提取以下租房合同中的关键条款：\n\n{contract_text}")
 
-    result: ClausesResult = model.with_structured_output(schema=ClausesResult).invoke(
+    result = model.with_structured_output(schema=ClausesResult).invoke(
         [system_message, human_message]
     )
+
+    if result is None or not result.clauses:
+        return []
 
     return [
         Clause(
@@ -168,9 +171,18 @@ def analyze_risk(
 {laws_text}"""
     )
 
-    result: RiskAnalysisResult = model.with_structured_output(schema=RiskAnalysisResult).invoke(
+    result = model.with_structured_output(schema=RiskAnalysisResult).invoke(
         [system_message, human_message]
     )
+
+    if result is None:
+        return RiskAnalysis(
+            clause_type=clause["clause_type"],
+            risk_level="未知",
+            risk_description="分析失败，请稍后重试",
+            legal_basis="无",
+            suggestion="建议人工审核该条款",
+        )
 
     return RiskAnalysis(
         clause_type=clause["clause_type"],
@@ -185,26 +197,33 @@ def analyze_risk(
 
 def clause_extraction_node(state: ContractState) -> dict:
     """
-    条款提取节点：从合同原文中提取关键条款
+    条款提取节点：从合同原文中提取关键条款。
+
+    优先读 contract_text 字段；如果为空（直接使用 contract_agent 子图时），
+    从最后一条用户消息中自动提取。
     """
-    contract_text = state["contract_text"]
+    contract_text = state.get("contract_text", "")
+    if not contract_text:
+        user_messages = filter_messages(state["messages"], include_types="human")
+        contract_text = user_messages[-1].content if user_messages else ""
     clauses = extract_clauses(contract_text)
     return {"extracted_clauses": clauses}
 
 
-def make_law_retrieval_node(retriever: BaseRetriever):
+def make_law_retrieval_node(get_retriever):
     """
-    创建法律检索节点的工厂函数
+    创建法律检索节点的工厂函数。
+
+    接收一个返回 BaseRetriever 的 callable，在节点实际执行时才调用它获取检索器。
+    这样图的编译不依赖检索器是否已初始化（模型下载、索引构建等耗时操作延迟到运行时）。
 
     Args:
-        retriever: 法律知识库的 Retriever
+        get_retriever: 返回 BaseRetriever 的 callable
     Returns:
         law_retrieval_node 节点函数
     """
     def law_retrieval_node(state: ContractState) -> dict:
-        """
-        法律检索节点：为每个条款检索相关法律条文
-        """
+        retriever = get_retriever()
         clauses = state["extracted_clauses"]
         all_laws: List[dict] = []
         for clause in clauses:

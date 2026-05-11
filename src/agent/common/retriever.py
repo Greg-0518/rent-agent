@@ -3,15 +3,17 @@
 
 功能：
 - 加载 docs/ 目录下的 PDF 法律文档
-- 构建 BM25 + FAISS 混合检索
-- CrossEncoder 重排序
-- LLM 查询改写（将用户口语化查询转为法律术语检索）
-- 索引持久化到 storage/ 目录，避免重复构建
+- 构建 BM25 + FAISS 混合检索（FAISS 下载失败时降级为纯 BM25）
+- CrossEncoder 重排序（模型不可用时跳过）
+- LLM 查询改写
+- 索引持久化到 storage/ 目录
 """
 
 import hashlib
 import json
+import os
 import pickle
+import sys
 from pathlib import Path
 from typing import List, Optional
 
@@ -42,6 +44,15 @@ RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 BM25_WEIGHT = 0.4
 VECTOR_WEIGHT = 0.6
 TOP_K = 5
+
+_HF_UNAVAILABLE_MSG = (
+    "\n[retriever] ============================================================\n"
+    "[retriever] 无法从 HuggingFace 下载模型，请设置镜像后重试：\n"
+    "[retriever]   在 .env 文件中添加：HF_ENDPOINT=https://hf-mirror.com\n"
+    "[retriever]   然后重启 langgraph dev\n"
+    "[retriever]   当前降级为纯 BM25 检索（无向量检索，无重排序）\n"
+    "[retriever] ============================================================\n"
+)
 
 
 # ============ 查询改写检索器 ============
@@ -135,12 +146,9 @@ def build_law_retriever(
     如果 storage/ 下已有索引且 docs 未变更，直接加载；
     否则从 docs/ 重新构建索引并持久化。
 
-    Args:
-        docs_dir: PDF 文档目录路径，默认项目根目录下的 docs/
-        storage_dir: 索引存储目录路径，默认项目根目录下的 storage/
-
-    Returns:
-        带有查询改写 + 混合检索 + 重排序的 BaseRetriever
+    模型下载失败时自动降级：
+    - 无 embedding → 纯 BM25 检索
+    - 无 reranker → 跳过重排序
     """
     docs_path = Path(docs_dir) if docs_dir else DOCS_DIR
     storage_path = Path(storage_dir) if storage_dir else STORAGE_DIR
@@ -148,22 +156,32 @@ def build_law_retriever(
     bm25_path = storage_path / "bm25.pkl"
     hash_path = storage_path / "docs_hash.json"
 
-    embedding_model = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    # 尝试初始化 embedding 模型（国内网络可能无法直连 HuggingFace）
+    embedding_model = None
+    try:
+        embedding_model = HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL,
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+    except Exception:
+        print(_HF_UNAVAILABLE_MSG, file=sys.stderr)
 
     current_hash = _compute_docs_hash(docs_path)
     saved_hash = None
     if hash_path.exists():
         saved_hash = json.loads(hash_path.read_text(encoding="utf-8")).get("hash")
 
+    vector_store = None
     if current_hash and faiss_path.exists() and bm25_path.exists() and current_hash == saved_hash:
         print("[retriever] 检测到已有索引且文档未变更，直接加载...")
-        vector_store = FAISS.load_local(
-            str(faiss_path), embedding_model, allow_dangerous_deserialization=True
-        )
+        if embedding_model is not None:
+            try:
+                vector_store = FAISS.load_local(
+                    str(faiss_path), embedding_model, allow_dangerous_deserialization=True
+                )
+            except Exception as e:
+                print(f"[retriever] 加载 FAISS 索引失败: {e}，降级为纯 BM25")
         with open(bm25_path, "rb") as f:
             bm25_retriever = pickle.load(f)
     else:
@@ -175,7 +193,7 @@ def build_law_retriever(
                 [Document(page_content="暂无法律条文", metadata={})]
             )
             bm25_retriever.k = TOP_K
-            return bm25_retriever
+            return RewrittenRetriever(retriever=bm25_retriever)
 
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
@@ -185,35 +203,48 @@ def build_law_retriever(
         chunks = text_splitter.split_documents(docs)
         print(f"[retriever] 文档分块完成: {len(chunks)} 个chunk")
 
-        vector_store = FAISS.from_documents(chunks, embedding_model)
-        vector_store.save_local(str(faiss_path))
+        if embedding_model is not None:
+            try:
+                vector_store = FAISS.from_documents(chunks, embedding_model)
+                vector_store.save_local(str(faiss_path))
+            except Exception as e:
+                print(f"[retriever] FAISS 索引构建失败: {e}，降级为纯 BM25")
 
         bm25_retriever = BM25Retriever.from_documents(chunks)
         bm25_retriever.k = TOP_K
-        with open(bm25_path, "wb") as f:
-            pickle.dump(bm25_retriever, f)
+        try:
+            with open(bm25_path, "wb") as f:
+                pickle.dump(bm25_retriever, f)
+            storage_path.mkdir(parents=True, exist_ok=True)
+            hash_path.write_text(json.dumps({"hash": current_hash}), encoding="utf-8")
+            print("[retriever] 索引已持久化到 storage/")
+        except Exception as e:
+            print(f"[retriever] 索引持久化失败: {e}")
 
-        storage_path.mkdir(parents=True, exist_ok=True)
-        hash_path.write_text(json.dumps({"hash": current_hash}), encoding="utf-8")
-        print("[retriever] 索引已持久化到 storage/")
-
-    # 向量检索器
-    vector_retriever = vector_store.as_retriever(search_kwargs={"k": TOP_K})
     bm25_retriever.k = TOP_K
 
-    # 混合检索
-    ensemble_retriever = EnsembleRetriever(
-        retrievers=[bm25_retriever, vector_retriever],
-        weights=[BM25_WEIGHT, VECTOR_WEIGHT],
-    )
+    # 构建检索链路
+    if vector_store is not None:
+        vector_retriever = vector_store.as_retriever(search_kwargs={"k": TOP_K})
+        ensemble_retriever = EnsembleRetriever(
+            retrievers=[bm25_retriever, vector_retriever],
+            weights=[BM25_WEIGHT, VECTOR_WEIGHT],
+        )
+        base_retriever = ensemble_retriever
+    else:
+        base_retriever = bm25_retriever
 
-    # 重排序
-    reranker_model = HuggingFaceCrossEncoder(model_name=RERANKER_MODEL)
-    reranker = CrossEncoderReranker(model=reranker_model, top_n=TOP_K)
-    reranked_retriever = ContextualCompressionRetriever(
-        base_compressor=reranker, base_retriever=ensemble_retriever
-    )
+    # 尝试初始化 reranker
+    reranked_retriever = base_retriever
+    if embedding_model is not None:
+        try:
+            reranker_model = HuggingFaceCrossEncoder(model_name=RERANKER_MODEL)
+            reranker = CrossEncoderReranker(model=reranker_model, top_n=TOP_K)
+            reranked_retriever = ContextualCompressionRetriever(
+                base_compressor=reranker, base_retriever=base_retriever
+            )
+        except Exception:
+            print("[retriever] reranker 模型不可用，跳过重排序")
 
-    # 查询改写 + 重排序检索器
     return RewrittenRetriever(retriever=reranked_retriever)
 

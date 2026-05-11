@@ -33,11 +33,9 @@ def build_contract_graph():
     Returns:
         compiled 的 ContractState 子图
     """
-    retriever = _get_retriever()
-
     builder = StateGraph(ContractState)
     builder.add_node("clause_extraction", clause_extraction_node)
-    builder.add_node("law_retrieval", make_law_retrieval_node(retriever))
+    builder.add_node("law_retrieval", make_law_retrieval_node(_get_retriever))
     builder.add_node("risk_analysis", risk_analysis_node)
     builder.add_node("report_generation", report_generation_node)
 
@@ -50,5 +48,4 @@ def build_contract_graph():
     return builder.compile()
 
 
-# 编译好的子图，供 graph.py 引用
 contract_graph = build_contract_graph()
