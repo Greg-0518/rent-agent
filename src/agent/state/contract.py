@@ -8,18 +8,21 @@ from langgraph.graph import MessagesState
 
 class Clause(TypedDict):
     """合同条款"""
-    clause_type: str  # 条款类型：租金、押金、租期等
-    content: str  # 条款内容
-    position: str  # 位置信息
+    clause_type: str   # 条款类型：租金、押金、租期等
+    content: str       # 条款内容
+    position: str      # 位置信息
+    is_blank: bool     # 核心内容是否空白未填写
 
 
 class RiskAnalysis(TypedDict):
     """风险分析结果"""
-    clause_type: str        # 条款类型
-    risk_level: str         # 高/中/低
-    risk_description: str   # 风险描述
-    legal_basis: str        # 法律基础
-    suggestion: str         # 建议
+    clause_type: str           # 条款类型
+    risk_level: str            # 高/中/低
+    risk_description: str      # 风险描述
+    legal_basis: str           # 法律基础
+    legal_citation: str        # 引用法条编号，如《民法典》第712条
+    suggestion: str            # 协商建议
+    modified_text: str         # 推荐的修改措辞（直接可用的合同文本）
 
 
 class ContractState(MessagesState):
