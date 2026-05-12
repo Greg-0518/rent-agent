@@ -32,6 +32,43 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from src.agent.common.llm import model
 
+# ============ 文本清洗 ============
+
+def _clean_page_text(text: str) -> str:
+    """清洗 PDF 提取的文本：去 URL、页眉页脚、格式噪音"""
+    import re
+
+    if not text or not isinstance(text, str):
+        return ""
+
+    # 替换不可见字符
+    text = text.replace("\x00", "").replace("\r", "\n")
+
+    # 按行处理，过滤噪音行
+    lines = text.split("\n")
+    cleaned_lines = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # 跳过纯 URL 行
+        if re.match(r'^https?://', line):
+            continue
+        # 跳过页码行（纯数字或类似 "第X页"）
+        if re.match(r'^[\s]*\d{1,4}[\s]*$', line):
+            continue
+        if re.match(r'^第[\s]*\d{1,4}[\s]*页', line):
+            continue
+        # 跳过常见的页眉页脚（"—" 开头结尾的）
+        if line.startswith("—") or line.endswith("—"):
+            continue
+        # 去掉行内 URL
+        line = re.sub(r'https?://\S+', '', line)
+        cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines)
+
+
 # ============ 常量 ============
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -112,6 +149,9 @@ def _load_docs(docs_dir: Path) -> List[Document]:
             pages = loader.load()
             for page in pages:
                 page.metadata["source"] = pdf_path.name
+                page.page_content = _clean_page_text(page.page_content)
+            # 过滤清洗后为空的页面
+            pages = [p for p in pages if p.page_content]
             docs.extend(pages)
             print(f"[retriever] 已加载: {pdf_path.name} ({len(pages)} 页)")
         except Exception as e:
@@ -196,12 +236,28 @@ def build_law_retriever(
             return RewrittenRetriever(retriever=bm25_retriever)
 
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=50,
-            separators=["\n\n", "\n", "。", "；", "，", " ", ""],
+            chunk_size=800,
+            chunk_overlap=80,
+            separators=["\n第", "\n\n", "\n", "。", "；", "，", " ", ""],
         )
+        # 过滤掉空页或仅含空白字符的页面
+        for doc in docs:
+            content = doc.page_content
+            if content and not isinstance(content, str):
+                doc.page_content = str(content)
+            doc.page_content = (content or "").replace("\x00", "").strip()
+        docs = [d for d in docs if d.page_content]
+        print(f"[retriever] PDF 页数: {len(docs)}（已过滤空页）")
         chunks = text_splitter.split_documents(docs)
         print(f"[retriever] 文档分块完成: {len(chunks)} 个chunk")
+
+        if not chunks:
+            print("[retriever] 警告：分块结果为空，降级为纯 BM25（兜底文档）")
+            bm25_retriever = BM25Retriever.from_documents(
+                [Document(page_content="暂无法律条文", metadata={})]
+            )
+            bm25_retriever.k = TOP_K
+            return RewrittenRetriever(retriever=bm25_retriever)
 
         if embedding_model is not None:
             try:
