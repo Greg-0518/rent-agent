@@ -9,7 +9,7 @@ from langchain_core.messages import filter_messages, HumanMessage, SystemMessage
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
-from langgraph.types import interrupt
+from langgraph.types import Command, interrupt
 from pydantic import BaseModel, Field
 
 from src.agent.common.content import ContextSchema
@@ -99,7 +99,10 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
         return current_state
 
     # 根据历史偏好和用户消息提取消息
-    updated_state = {}
+    # 从已有 state 中继承字段，避免中断恢复时丢失之前提取的值
+    _state_fields = ("city", "district", "budget_min", "budget_max",
+                     "room_type", "orientation", "room_count", "others")
+    updated_state = {k: state.get(k) for k in _state_fields if state.get(k) is not None}
     extracted_info = extract_info(extract_messages)
     updated_state = update_state(updated_state, extracted_info)
 
@@ -111,11 +114,9 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
         missing_info.append("**预算范围**")
 
     if missing_info:
-        prompt = f"为了给您推荐合适的房源，请提供以下信息：{','.join(missing_info)}和其他信息。\n"
-        prompt += "如果您不想提供，你输出’**不提供**‘，我会根据已有信息为您推荐房源"
-        # 中断，等待用户输入
-        answer = interrupt(prompt)
-        if str(answer).strip() == "不提供":
+        # 检查用户本轮是否说了"不提供"
+        last_user_msg = user_messages[-1].content if user_messages else ""
+        if "不提供" in str(last_user_msg):
             if not updated_state.get("city"):
                 updated_state['city'] = "随机城市"
             if not updated_state.get("budget_min"):
@@ -124,17 +125,20 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
                 updated_state['budget_max'] = 3000.0
             if not updated_state.get("room_count"):
                 updated_state['room_count'] = 6
-            print(f"⽤⼾选择不提供信息，使⽤默认值: 城市={updated_state.get('city')}, "
+            print(f"用户选择不提供信息，使用默认值: 城市={updated_state.get('city')}, "
                   f"预算={updated_state.get('budget_min')}-{updated_state.get('budget_max')}")
         else:
-            # 用户提供了必要的选择
-            user_response_message = HumanMessage(content=str(answer))
-            extracted_info = extract_info([user_response_message])
-            updated_state = update_state(updated_state, extracted_info)
+            prompt = f"为了给您推荐合适的房源，请提供以下信息：{','.join(missing_info)}和其他信息。\n"
+            prompt += "如果您不想提供，你输出’**不提供**’，我会根据已有信息为您推荐房源"
+            # 用 Command 中断同时把已提取的值写入 state，恢复时不会丢失
+            return Command(resume=prompt, update=updated_state)
 
     # 4.持久化处理，更新跨会话参数
     if updated_state.get('budget_min') or updated_state.get('budget_max'):
-        user_id = runtime.context.get("user_id")
+        if runtime.context is None:
+            user_id = "default"
+        else:
+            user_id = runtime.context.get("user_id", "default")
         namespace = (user_id, "preferences")
         # 先查询，获取key进行更新
         prefs_result = store.search(namespace)
@@ -205,21 +209,31 @@ db_password = os.getenv('DB_PASSWORD')
 db_host = os.getenv('DB_HOST')
 db_port = os.getenv('DB_PORT')
 db_name = os.getenv('DB_NAME')
-db = SQLDatabase.from_uri(f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}")
-# 获取数据库⼯具
-toolkit = SQLDatabaseToolkit(db=db, llm=model)
-tools = toolkit.get_tools()
 
-for tool in tools:
-    print(tool.name)
+_tools = []
+try:
+    db = SQLDatabase.from_uri(f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}")
+    toolkit = SQLDatabaseToolkit(db=db, llm=model)
+    _tools = toolkit.get_tools()
+    for tool in _tools:
+        print(tool.name)
+except Exception as e:
+    print(f"[WARN] 数据库连接失败，SQL 工具不可用: {e}")
+    _tools = []
 
-# 节点：获取表信息
-get_schema_tool = next(tool for tool in tools if tool.name == 'sql_db_schema')
-get_schema_node = ToolNode([get_schema_tool], name='get_schema')
+# 节点：获取表信息 / 执行SQL查询
+_get_schema = next((t for t in _tools if t.name == 'sql_db_schema'), None)
+_get_query  = next((t for t in _tools if t.name == 'sql_db_query'), None)
 
-# 节点：执行SQL查询
-run_query_tool = next(tool for tool in tools if tool.name == 'sql_db_query')
-run_query_node = ToolNode([run_query_tool], name='run_query')
+if _get_schema and _get_query:
+    get_schema_node = ToolNode([_get_schema], name='get_schema')
+    run_query_node  = ToolNode([_get_query], name='run_query')
+else:
+    # 无数据库时用占位函数，避免 import 阶段崩溃
+    def _no_db_warning(state):
+        return {"messages": [AIMessage(content="数据库不可用，请检查 MySQL 连接")]}
+    get_schema_node = _no_db_warning
+    run_query_node  = _no_db_warning
 
 # 节点：获取全量表
 def list_tables(state: RecommendState):
@@ -233,7 +247,7 @@ def list_tables(state: RecommendState):
     tool_call_message = AIMessage(content="", tool_calls=[tool_call])
 
     # 2.手动调用工具 -> sql_db_list_tables
-    lis_tables_tool = next(tool for tool in tools if tool.name == 'sql_db_list_tables')
+    lis_tables_tool = next((t for t in _tools if t.name == 'sql_db_list_tables'), None)
     tool_message = lis_tables_tool.invoke(tool_call)
 
     # 3.整合结果
@@ -244,7 +258,7 @@ def list_tables(state: RecommendState):
 
 # 节点：强制创建⼀个获取表信息的⼯具调⽤
 def call_get_schema(state: RecommendState):
-    llm_with_tools = model.bind_tools([get_schema_tool], tool_choice="any")
+    llm_with_tools = model.bind_tools([_get_schema], tool_choice="any")
     response = llm_with_tools.invoke(state["messages"])   # AIMessage
     return {"messages": [response]}
 
@@ -264,7 +278,7 @@ def generate_query(state: RecommendState):
     )
     system_message = SystemMessage(content=system_prompt)
 
-    llm_with_tools = model.bind_tools([run_query_tool])
+    llm_with_tools = model.bind_tools([_get_query])
     # 将用户信息也加入到查询条件中
     response = llm_with_tools.invoke([system_message] + state["messages"])
     return {"messages": [response]}
@@ -290,7 +304,7 @@ def check_query(state: RecommendState):
     # 将SQL当作⽤⼾消息传⼊进⾏检查
     user_message = HumanMessage(content=tool_call["args"]["query"])
 
-    llm_with_tools = model.bind_tools([run_query_tool], tool_choice="any")
+    llm_with_tools = model.bind_tools([_get_query], tool_choice="any")
     response = llm_with_tools.invoke([system_message, user_message])
     response.id = state["messages"][-1].id
 

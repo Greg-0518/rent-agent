@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+import jieba
+
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
 from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
@@ -81,6 +83,11 @@ RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 BM25_WEIGHT = 0.4
 VECTOR_WEIGHT = 0.6
 TOP_K = 5
+
+
+def _jieba_tokenizer(text: str) -> List[str]:
+    """中文分词器，让 BM25 基于词组而不是单字匹配"""
+    return [w for w in jieba.cut(text) if w.strip()]
 
 _HF_UNAVAILABLE_MSG = (
     "\n[retriever] ============================================================\n"
@@ -230,7 +237,8 @@ def build_law_retriever(
         if not docs:
             print("[retriever] 警告：无文档可加载，返回空检索器")
             bm25_retriever = BM25Retriever.from_documents(
-                [Document(page_content="暂无法律条文", metadata={})]
+                [Document(page_content="暂无法律条文", metadata={})],
+                preprocess_func=_jieba_tokenizer,
             )
             bm25_retriever.k = TOP_K
             return RewrittenRetriever(retriever=bm25_retriever)
@@ -254,7 +262,8 @@ def build_law_retriever(
         if not chunks:
             print("[retriever] 警告：分块结果为空，降级为纯 BM25（兜底文档）")
             bm25_retriever = BM25Retriever.from_documents(
-                [Document(page_content="暂无法律条文", metadata={})]
+                [Document(page_content="暂无法律条文", metadata={})],
+                preprocess_func=_jieba_tokenizer,
             )
             bm25_retriever.k = TOP_K
             return RewrittenRetriever(retriever=bm25_retriever)
@@ -266,7 +275,7 @@ def build_law_retriever(
             except Exception as e:
                 print(f"[retriever] FAISS 索引构建失败: {e}，降级为纯 BM25")
 
-        bm25_retriever = BM25Retriever.from_documents(chunks)
+        bm25_retriever = BM25Retriever.from_documents(chunks, preprocess_func=_jieba_tokenizer)
         bm25_retriever.k = TOP_K
         try:
             with open(bm25_path, "wb") as f:

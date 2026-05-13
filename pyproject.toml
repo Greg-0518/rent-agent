@@ -24,6 +24,7 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "sentence-transformers>=2.2.0",
     "pymupdf>=1.24.0",
+    "jieba>=0.42.1",
 ]
 
 
