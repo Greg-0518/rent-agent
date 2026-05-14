@@ -6,7 +6,9 @@
     "recommend_agent": "./src/agent/recommend.py:recommended_graph",
     "reserve_agent": "./src/agent/reserve.py:reserve_graph",
     "extend_agent": "./src/agent/extend.py:extend_graph",
-    "contract_agent": "./src/agent/contract.py:contract_graph"
+    "contract_agent": "./src/agent/contract.py:contract_graph",
+    "finance_agent": "./src/agent/finance.py:finance_graph",
+    "vision_agent": "./src/agent/vision.py:vision_graph"
   },
   "env": ".env",
   "image_distro": "wolfi"

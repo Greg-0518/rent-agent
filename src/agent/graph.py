@@ -8,12 +8,11 @@ from src.agent.common.content import ContextSchema
 from src.agent.contract import contract_graph
 from src.agent.extend import extend_graph
 from src.agent.node.main import (
-    get_store_info,
-    identify_question,
-    need_reserve,
-    get_user_preferences,
-    set_contract_text,
+    get_store_info, identify_question, need_reserve,
+    get_user_preferences, set_contract_text,
 )
+from src.agent.finance import finance_graph
+from src.agent.node.vision import image_analysis_node
 from src.agent.recommend import recommended_graph
 from src.agent.reserve import reserve_graph
 from src.agent.state.main import State, NeedReserveOutput
@@ -29,13 +28,16 @@ builder.add_node("extend_graph", extend_graph)
 builder.add_node("contract_graph", contract_graph)
 builder.add_node(get_user_preferences)
 builder.add_node(set_contract_text)
+builder.add_node("image_analysis", image_analysis_node)
+builder.add_node("finance_graph", finance_graph)
 
 builder.add_edge(START, "get_store_info")
 builder.add_edge("get_store_info", "identify_question")
 
 
 def router_message(state: State) -> Literal[
-    "recommended_graph", "reserve_graph", "set_contract_text", "extend_graph", "get_user_preferences"
+    "recommended_graph", "reserve_graph", "set_contract_text",
+    "image_analysis", "finance_graph", "extend_graph", "get_user_preferences"
 ]:
     user_intent = state["user_intent"]
     if user_intent == "recommend_house":
@@ -44,6 +46,10 @@ def router_message(state: State) -> Literal[
         return "reserve_graph"
     elif user_intent == "contract_audit":
         return "set_contract_text"
+    elif user_intent == "image_analysis":
+        return "image_analysis"
+    elif user_intent == "rent_calc":
+        return "finance_graph"
     elif user_intent == "get_info":
         return "get_user_preferences"
     else:
@@ -53,7 +59,8 @@ def router_message(state: State) -> Literal[
 builder.add_conditional_edges(
     "identify_question",
     router_message,
-    ["recommended_graph", "reserve_graph", "set_contract_text", "extend_graph", "get_user_preferences"]
+    ["recommended_graph", "reserve_graph", "set_contract_text",
+     "image_analysis", "finance_graph", "extend_graph", "get_user_preferences"]
 )
 # 合同审核：提取文本 → 审核子图
 builder.add_edge("set_contract_text", "contract_graph")
@@ -80,7 +87,11 @@ builder.add_edge("reserve_graph", END)
 builder.add_edge("contract_graph", END)
 # 路由4：查询我的信息
 builder.add_edge("get_user_preferences", END)
-# 路由5：其它
+# 路由5：图片分析
+builder.add_edge("image_analysis", END)
+# 路由6：租金计算
+builder.add_edge("finance_graph", END)
+# 路由7：其它
 builder.add_edge("extend_graph", END)
 
 graph = builder.compile()

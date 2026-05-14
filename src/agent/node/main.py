@@ -13,8 +13,9 @@ from src.agent.state.main import State, NeedReserveOutput
 
 class UserMessage(BaseModel):
     """用户提问的消息摘要"""
-    type: Literal["recommend_house", "reserve_house", "get_info", "contract_audit", "others"] = Field(
-        description="根据用户问题描述判断问题类型：推荐房源、预定房源、获取信息、合同审核、其他内容"
+    type: Literal["recommend_house", "reserve_house", "get_info", "contract_audit",
+                 "image_analysis", "rent_calc", "others"] = Field(
+        description="根据用户问题描述判断问题类型：推荐房源、预定房源、获取信息、合同审核、图片分析、租金计算、其他内容"
     )
 
 
