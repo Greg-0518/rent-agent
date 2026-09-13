@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import filter_messages, HumanMessage, SystemMessage, AIMessage
+from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
@@ -14,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from src.agent.common.content import ContextSchema
 from src.agent.common.llm import model
+from src.agent.common.sql_guard import rejection_message, validate_sql
 from src.agent.common.store import UserPreferences
 from src.agent.state.recommend import RecommendState, get_recommend_info
 
@@ -57,7 +59,7 @@ class UserInfo(BaseModel):
 
 def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *, store: BaseStore):
     """收集用户希望的推荐信息"""
-
+    print("------------------    into collect_user info    ----------------------------------------------")
     # 1.获取需要被解析的数据，最新的用户消息 + 用户的偏好数据
     user_messages = filter_messages(state["messages"], include_types="human")
     pref = state.get("user_preferences")
@@ -98,14 +100,24 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
         current_state.update(user_info_dict)
         return current_state
 
-    # 根据历史偏好和用户消息提取消息
+    # 诊断：看看每次进入函数时 state 里已有哪些字段
+    _existing = {k: state.get(k) for k in ("city","district","budget_min","budget_max","room_type","room_count")}
+    print(f"[collect_user_info] ENTER  state 已有字段: {_existing}")
+    print(f"[collect_user_info] ENTER  state messages 数: {len(state.get('messages',[]))}")
+    # 显示最后一条用户消息的内容（用于判断是否是新 run 还是 resume）
+    if user_messages:
+        last = user_messages[-1].content
+        print(f"[collect_user_info] 最后一条用户消息(前80字): {last[:80]}")
+
     # 从已有 state 中继承字段，避免中断恢复时丢失之前提取的值
     _state_fields = ("city", "district", "budget_min", "budget_max",
                      "room_type", "orientation", "room_count", "others")
-    updated_state = {k: state.get(k) for k in _state_fields if state.get(k) is not None}
+    #updated_state = {k: state.get(k) for k in _state_fields if state.get(k) is not None}
+    updated_state = {}
     extracted_info = extract_info(extract_messages)
     updated_state = update_state(updated_state, extracted_info)
 
+    print(f"[collect_user_info] 本轮提取结果: {updated_state}")
     # 3.中断咨询推荐的必要参数，如城市、预算范围
     missing_info = []
     if not updated_state.get("city"):
@@ -114,9 +126,11 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
         missing_info.append("**预算范围**")
 
     if missing_info:
-        # 检查用户本轮是否说了"不提供"
-        last_user_msg = user_messages[-1].content if user_messages else ""
-        if "不提供" in str(last_user_msg):
+        prompt = f"为了给您推荐合适的房源，请提供以下信息：{','.join(missing_info)}和其他信息。\n"
+        prompt += "如果您不想提供，你输出’**不提供**‘，我会根据已有信息为您推荐房源"
+        # 中断，等待用户输入
+        answer = interrupt(prompt)
+        if str(answer).strip() == "不提供":
             if not updated_state.get("city"):
                 updated_state['city'] = "随机城市"
             if not updated_state.get("budget_min"):
@@ -125,16 +139,37 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
                 updated_state['budget_max'] = 3000.0
             if not updated_state.get("room_count"):
                 updated_state['room_count'] = 6
-            print(f"用户选择不提供信息，使用默认值: 城市={updated_state.get('city')}, "
+            print(f"⽤⼾选择不提供信息，使⽤默认值: 城市={updated_state.get('city')}, "
                   f"预算={updated_state.get('budget_min')}-{updated_state.get('budget_max')}")
         else:
-            prompt = f"为了给您推荐合适的房源，请提供以下信息：{','.join(missing_info)}和其他信息。\n"
-            prompt += "如果您不想提供，你输出’**不提供**’，我会根据已有信息为您推荐房源"
-            # 用 Command 中断同时把已提取的值写入 state，恢复时不会丢失
-            return Command(resume=prompt, update=updated_state)
+            # 用户提供了必要的选择
+            user_response_message = HumanMessage(content=str(answer))
+            extracted_info = extract_info([user_response_message])
+            updated_state = update_state(updated_state, extracted_info)
+
+    # if missing_info:
+    #     # 检查用户本轮是否说了"不提供"
+    #     last_user_msg = user_messages[-1].content if user_messages else ""
+    #     if "不提供" in str(last_user_msg):
+    #         if not updated_state.get("city"):
+    #             updated_state['city'] = "随机城市"
+    #         if not updated_state.get("budget_min"):
+    #             updated_state['budget_min'] = 500.0
+    #         if not updated_state.get("budget_max"):
+    #             updated_state['budget_max'] = 3000.0
+    #         if not updated_state.get("room_count"):
+    #             updated_state['room_count'] = 6
+    #         print(f"用户选择不提供信息，使用默认值: 城市={updated_state.get('city')}, "
+    #               f"预算={updated_state.get('budget_min')}-{updated_state.get('budget_max')}")
+    #     else:
+    #         prompt = f"为了给您推荐合适的房源，请提供以下信息：{','.join(missing_info)}和其他信息。\n"
+    #         prompt += "如果您不想提供，你输出’**不提供**’，我会根据已有信息为您推荐房源"
+    #         # 用 Command 中断同时把已提取的值写入 state，恢复时不会丢失
+    #         return Command(resume=prompt, update=updated_state)
+
 
     # 4.持久化处理，更新跨会话参数
-    if updated_state.get('budget_min') or updated_state.get('budget_max'):
+    if (updated_state.get('budget_min') or updated_state.get('budget_max')) and store is not None:
         if runtime.context is None:
             user_id = "default"
         else:
@@ -211,19 +246,69 @@ db_port = os.getenv('DB_PORT')
 db_name = os.getenv('DB_NAME')
 
 _tools = []
+_DB_AVAILABLE = False
+_db_error_msg = "数据库不可用"
+# 只读账号优先（设计文档 §4.7）：即使 prompt 注入绕过了白名单，DB 权限仍是最后一道门
+_ro_user = os.getenv('DB_RO_USER')
+_ro_password = os.getenv('DB_RO_PASSWORD')
+if _ro_user:
+    _conn_user, _conn_password = _ro_user, _ro_password
+else:
+    _conn_user, _conn_password = db_user, db_password
+    print("[WARN] 未配置 DB_RO_USER，SQL 将使用可写账号连接——建议为评测链路建只读账号")
 try:
-    db = SQLDatabase.from_uri(f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}")
+    db = SQLDatabase.from_uri(f"mysql+pymysql://{_conn_user}:{_conn_password}@{db_host}:{db_port}/{db_name}")
     toolkit = SQLDatabaseToolkit(db=db, llm=model)
     _tools = toolkit.get_tools()
-    for tool in _tools:
-        print(tool.name)
+    _DB_AVAILABLE = True
+    for _t in _tools:
+        print(_t.name)
 except Exception as e:
     print(f"[WARN] 数据库连接失败，SQL 工具不可用: {e}")
     _tools = []
 
+_DB_ERROR_RESPONSE = {"messages": [AIMessage(content=f"⚠️ {_db_error_msg}，请检查 MySQL 连接后重试。")]}
+
 # 节点：获取表信息 / 执行SQL查询
 _get_schema = next((t for t in _tools if t.name == 'sql_db_schema'), None)
-_get_query  = next((t for t in _tools if t.name == 'sql_db_query'), None)
+_raw_get_query = next((t for t in _tools if t.name == 'sql_db_query'), None)
+
+
+class _QueryInput(BaseModel):
+    """sql_db_query 的入参 schema（与原工具保持一致）"""
+
+    query: str = Field(description="要执行的 SQL 查询语句，必须是只读的 SELECT")
+
+
+def _build_guarded_query_tool(raw_tool):
+    """把 sql_guard 包到 sql_db_query 外面 —— 所有执行 SQL 的路径都必须过安全层。
+
+    包出来的工具**名字和入参 schema 与原工具完全一致**（sql_db_query / {"query": str}），
+    所以 generate_query / check_query 里的 bind_tools 和 ToolNode 都不用改：
+    它们拿到的已经是带安全层的版本。
+    """
+    if raw_tool is None:
+        return None
+
+    @tool("sql_db_query", args_schema=_QueryInput)
+    def guarded_query(query: str) -> str:
+        """Input to this tool is a detailed and correct SQL query, output is a result from the database.
+        If the query is not correct, an error message will be returned. If an error is returned, rewrite
+        the query, check the query, and try again. If you encounter an issue with Unknown column 'xxxx'
+        in 'field list', use sql_db_schema to query the correct table fields.
+        只接受只读的 SELECT 查询；写操作会被安全层拒绝。"""
+        verdict = validate_sql(query)
+        if not verdict.allowed:
+            print(f"[sql_guard] 拦截 SQL: rule={verdict.rule} | {verdict.reason}")
+            return rejection_message(verdict)
+        if verdict.rule == "forced_limit":
+            print(f"[sql_guard] 强制注入/收紧 LIMIT → {verdict.sql}")
+        return raw_tool.invoke({"query": verdict.sql})
+
+    return guarded_query
+
+
+_get_query = _build_guarded_query_tool(_raw_get_query)
 
 if _get_schema and _get_query:
     get_schema_node = ToolNode([_get_schema], name='get_schema')
@@ -237,7 +322,8 @@ else:
 
 # 节点：获取全量表
 def list_tables(state: RecommendState):
-    # 1.调用llm，获取AIMessage(tool_calls)
+    if not _DB_AVAILABLE:
+        return _DB_ERROR_RESPONSE
     tool_call = {
         "name" : "sql_db_list_tables",
         "args": {},
@@ -245,24 +331,22 @@ def list_tables(state: RecommendState):
         "type": "tool_call",
     }
     tool_call_message = AIMessage(content="", tool_calls=[tool_call])
-
-    # 2.手动调用工具 -> sql_db_list_tables
     lis_tables_tool = next((t for t in _tools if t.name == 'sql_db_list_tables'), None)
     tool_message = lis_tables_tool.invoke(tool_call)
-
-    # 3.整合结果
     response = AIMessage(content=f"可用的表：{tool_message.content}")
-    return {
-        "messages": [tool_call_message, tool_message, response]
-    }
+    return {"messages": [tool_call_message, tool_message, response]}
 
 # 节点：强制创建⼀个获取表信息的⼯具调⽤
 def call_get_schema(state: RecommendState):
+    if not _DB_AVAILABLE:
+        return _DB_ERROR_RESPONSE
     llm_with_tools = model.bind_tools([_get_schema], tool_choice="any")
-    response = llm_with_tools.invoke(state["messages"])   # AIMessage
+    response = llm_with_tools.invoke(state["messages"])
     return {"messages": [response]}
 
 def generate_query(state: RecommendState):
+    if not _DB_AVAILABLE:
+        return _DB_ERROR_RESPONSE
     generate_query_system_prompt = """
     您是⼀个设计⽤于与SQL数据库交互的代理。
     给定⼀个输⼊问题，创建⼀个语法正确的{dialect}查询来运⾏，然后查看查询的结果并返回答案。
@@ -277,13 +361,13 @@ def generate_query(state: RecommendState):
         top_k=state.get("room_count", 5)
     )
     system_message = SystemMessage(content=system_prompt)
-
     llm_with_tools = model.bind_tools([_get_query])
-    # 将用户信息也加入到查询条件中
     response = llm_with_tools.invoke([system_message] + state["messages"])
     return {"messages": [response]}
 
 def check_query(state: RecommendState):
+    if not _DB_AVAILABLE:
+        return _DB_ERROR_RESPONSE
     check_query_system_prompt = """
     你是⼀个⾮常注重细节的SQL专家。仔细检查{dialect}查询中的常⻅错误，包括：
     -使⽤NULL值的NOT IN
@@ -297,17 +381,11 @@ def check_query(state: RecommendState):
     如果存在上述任何错误，请重写查询。如果没有错误，只需复制原始查询即可。
     在运⾏此检查之后，您将调⽤适当的⼯具来执⾏查询。""".format(dialect=db.dialect)
     system_message = SystemMessage(content=check_query_system_prompt)
-
-    # ⽣成⼈⼯⽤⼾消息进⾏检查
-    # 上⼀个节点是generate_query。如果⾛到这，必定调⽤了⼯具。这样获取到的SQL是准确的。
     tool_call = state["messages"][-1].tool_calls[0]
-    # 将SQL当作⽤⼾消息传⼊进⾏检查
     user_message = HumanMessage(content=tool_call["args"]["query"])
-
     llm_with_tools = model.bind_tools([_get_query], tool_choice="any")
     response = llm_with_tools.invoke([system_message, user_message])
     response.id = state["messages"][-1].id
-
     return {"messages": [response]}
 
 

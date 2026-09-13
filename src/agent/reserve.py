@@ -12,9 +12,18 @@ from src.agent.node.reserve import (
 from src.agent.state.reserve import ReserveState
 
 builder = StateGraph(ReserveState)
-builder.add_sequence([get_title, get_phone, get_id, add_reserve_message, call_orders])
+builder.add_node("get_title", get_title)
+builder.add_node("get_phone", get_phone)
+builder.add_node("get_id", get_id)
+builder.add_node("add_reserve_message", add_reserve_message)
+builder.add_node("call_orders", call_orders)
 builder.add_node("tool_node", ToolNode([generate_orders]))
+
 builder.add_edge(START, "get_title")
+builder.add_edge("get_title", "get_phone")
+builder.add_edge("get_phone", "get_id")
+builder.add_edge("get_id", "add_reserve_message")
+builder.add_edge("add_reserve_message", "call_orders")
 builder.add_conditional_edges(
     "call_orders",
     tools_condition,

@@ -11,13 +11,25 @@ from src.agent.state.reserve import ReserveState
 
 # 节点：获取⽤⼾预定房源
 def get_title(state: ReserveState):
-    prompt = "请输入要预订房源的名称"
-    while True:
-        title = interrupt(prompt)
-        if title:
-            return {"title": title}
-        # 每次验证失败后，提⽰信息会更新
-        prompt = f"'{title}' 不是⼀个有效的房源名称，请更正。"
+    print(f"[get_title] ENTER  state.title={state.get('title', '未设置')}  msg_count={len(state.get('messages',[]))}")
+    # 优先从 state 里取（中断恢复后的新 run 也能拿到之前的值）
+    if state.get("title"):
+        print(f"[get_title] title 已有值，直接跳过: {state['title']}")
+        return {}
+    # 尝试从最后一条用户消息提取 title
+    user_msgs = [m for m in state["messages"] if m.type == "human"]
+    last_msg = user_msgs[-1].content if user_msgs else ""
+    print(f"[get_title] 最后一条用户消息(前80字): {last_msg[:80]}")
+    # 如果最后一条消息是纯文本（不含"需要"/"不需要"等控制词），就当成 title
+    if last_msg and "请输入" not in last_msg and last_msg.strip() not in ("需要", "不需要", ""):
+        print(f"[get_title] 从消息中提取 title: '{last_msg}'")
+        return {"title": last_msg.strip()}
+    # 兜底：中断问询
+    title = interrupt("请输入要预订房源的名称")
+    print(f"[get_title] interrupt returned: '{title}' type={type(title).__name__}")
+    if title:
+        return {"title": title}
+    return {}
 
 def isPhoneVaild(phone_number: str):
     if len(phone_number) != 11:
@@ -40,14 +52,23 @@ def isPhoneVaild(phone_number: str):
 
 # 节点：获取⽤⼾预定电话
 def get_phone(state: ReserveState):
-    prompt = "请输⼊要预定的⼿机号"
-    while True:
-        phone_number = interrupt(prompt)
-        is_vaild, error_str = isPhoneVaild(phone_number)
-        if is_vaild:  # 可以进⾏验证
-            return {"phone_number": phone_number}
-        # 每次验证失败后，提⽰信息会更新
-        prompt = f"'{phone_number}' 有问题，{error_str}，请更正"
+    print(f"[get_phone] ENTER  state.title={state.get('title','?')}  phone_number={state.get('phone_number','未设置')}")
+    if state.get("phone_number"):
+        print(f"[get_phone] phone_number 已有值，直接跳过")
+        return {}
+    user_msgs = [m for m in state["messages"] if m.type == "human"]
+    last_msg = user_msgs[-1].content.strip() if user_msgs else ""
+    # 如果不是控制词且有数字，当成手机号
+    if last_msg and last_msg not in ("需要", "不需要", "") and any(c.isdigit() for c in last_msg):
+        cleaned = ''.join(c for c in last_msg if c.isdigit())
+        if isPhoneVaild(cleaned)[0]:
+            print(f"[get_phone] 从消息中提取 phone: '{cleaned}'")
+            return {"phone_number": cleaned}
+    phone_number = interrupt("请输⼊要预定的⼿机号")
+    print(f"[get_phone] interrupt returned: '{phone_number}'")
+    if phone_number and isPhoneVaild(phone_number.strip())[0]:
+        return {"phone_number": phone_number.strip()}
+    return {}
 
 def is_id_card_valid(id_card: str) -> bool:
     """
@@ -87,13 +108,23 @@ def is_id_card_valid(id_card: str) -> bool:
 
 # 节点：获取⽤⼾⾝份证
 def get_id(state: ReserveState):
-    prompt = "请输⼊要预定的⾝份证号码"
-    while True:
-        id_card = interrupt(prompt)
-        if id_card:
-            return {"id_card": id_card}
-        # 每次验证失败后，提⽰信息会更新
-        prompt = f"'{id_card}' 不是⼀个有效的⾝份证，请更正。"
+    print(f"[get_id] ENTER  state.id_card={state.get('id_card','未设置')}")
+    if state.get("id_card"):
+        print(f"[get_id] id_card 已有值，直接跳过")
+        return {}
+    user_msgs = [m for m in state["messages"] if m.type == "human"]
+    last_msg = user_msgs[-1].content.strip() if user_msgs else ""
+    # 如果不是控制词且长度合适（18位或含X），当成身份证号
+    if last_msg and last_msg not in ("需要", "不需要", "") and (len(last_msg) == 18 or any(c.isdigit() for c in last_msg)):
+        cleaned = last_msg.replace(" ", "").upper()
+        if is_id_card_valid(cleaned):
+            print(f"[get_id] 从消息中提取 valid id_card")
+            return {"id_card": cleaned}
+    id_card = interrupt("请输⼊要预定的⾝份证号码")
+    print(f"[get_id] interrupt returned: '{id_card}'")
+    if id_card:
+        return {"id_card": id_card.strip().upper()}
+    return {}
 
 
 def add_reserve_message(state: ReserveState):
