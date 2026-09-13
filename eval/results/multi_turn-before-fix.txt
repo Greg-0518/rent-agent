@@ -1,0 +1,93 @@
+多轮用例的"修前红、修后绿"，附带一个反例：**没有 GRAPH_CRASH 分支时它们会被静默跳过**
+==========================================================================================
+
+新增的三条多轮用例（`eval/cases/text2sql/multi_turn.yaml`）要证明的不是"它们能过"，
+而是**"它们真的抓得住那个 bug"**。所以下面三组结果是同一个东西的三个版本：
+
+    A. 修前的产品代码 + 新断言器  → 3 条全 FAIL（归因 GRAPH_CRASH）   ← 用例有牙
+    B. 修前的产品代码 + 旧断言器  → 2 条全 skip（存疑 unverifiable）  ← 没牙长什么样
+    C. 修后的产品代码 + 新断言器  → 3 条全 PASS                      ← 修完了
+
+复现命令（在仓库根目录，用 venv 里的 python）：
+
+    # A：把两个源文件切回修前版本（cff4d8f 是 D6 修复之前的最后一个提交）
+    git checkout cff4d8f -- src/agent/common/store.py src/agent/node/recommend.py
+    .\venv\Scripts\python.exe -m pytest eval -k "M-001 or M-002 or M-003" --run-id multi-turn-before-fix -q
+
+    # B：在 A 的基础上再把断言器切回"还没有 GRAPH_CRASH 分支"的版本
+    Copy-Item eval\asserters\rule.py .git\rule.py.new
+    git checkout HEAD -- eval\asserters\rule.py
+    .\venv\Scripts\python.exe -m pytest eval -k "M-001 or M-002" --run-id multi-turn-oldAsserter -q
+
+    # C：恢复
+    Copy-Item .git\rule.py.new eval\asserters\rule.py
+    git checkout HEAD -- src/agent/common/store.py src/agent/node/recommend.py
+    .\venv\Scripts\python.exe -m pytest eval -k "M-001 or M-002 or M-003" --run-id multi-turn-final -q
+
+原始输出在 eval/results/multi-turn-before-fix.jsonl（A）、
+multi-turn-oldAsserter.jsonl（B）、multi-turn-final.jsonl（C）。
+
+---------------------------------------------------------------------------
+
+A. 修前代码 + 新断言器 —— 3 条全红，且**红在它该红的那一轮**
+
+    fail=3  共 3 条      完成率 0/3 = 0.0%
+
+    [M-001] 归因 GRAPH_CRASH
+      图执行异常：第 2 轮（会话 1）: KeyError: 'budget_min'
+    [M-002] 归因 GRAPH_CRASH
+      图执行异常：第 2 轮（会话 2）: KeyError: 'budget_min'
+    [M-003] 归因 GRAPH_CRASH
+      图执行异常：第 2 轮（会话 1）: KeyError: 'budget_min'
+
+三条各自命中一个触发条件，和设计意图一一对应：
+
+    M-001  第 2 轮（**会话 1**）  → 同一会话的第二条消息就炸（不需要等新会话）
+    M-002  第 2 轮（**会话 2**）  → 新会话炸（同一用户）
+    M-003  第 2 轮（**会话 1**）  → 同会话；它第 3 轮根本没跑到，因为第 2 轮就断了
+
+注意 M-003 的轮次：崩在第 2 轮而不是第 3 轮，正说明"读 store 的缺键分支"**每轮**
+都会命中（`get_store_info` 是图的入口，`graph.py:34` 的 `add_edge(START, ...)`）。
+**只看最后一轮的轨迹会漏掉它**，所以 turn_errors 必须按轮记、任一轮崩都判失败。
+
+B. 修前代码 + **旧**断言器 —— 崩了，但被判成"存疑"然后 skip 掉
+
+    unverifiable=2  共 2 条      （ss，两条都是 skip）
+    [!] 存疑用例 2/2 = 100%，超过上限 20% —— 这份成绩单的可信度不足
+
+    为什么：旧的 assert_case 从头到尾没看 trace.ok/error。崩在入口节点时
+    user_intent 与 tool_calls 都是空的，于是走进"没执行任何 SQL"那段里的
+    `if not trace.user_intent and not trace.tool_calls:` → **UNVERIFIABLE**。
+    一个确定性崩溃被记成"断言器判不了"，然后 skip。
+
+    这一组是加 GRAPH_CRASH 的理由本身：**没有它，新加的三条用例是没牙的**——
+    它们在报告里显示为"存疑"而不是"失败"，只会把存疑比例从 0/70 抬到 3/73，
+    其余什么都不会发生。上面那句 100% 的警告只是因为这里只跑了两条；
+    混进全量之后是 3/73 ≈ 4%，连警告都不会有。
+
+    注意这个假存疑**不是多轮用例独有的**：单轮用例崩在入口也一样。之所以现在才
+    发现，是因为历史 301 条用例记录里 `trace.ok=False` 一次都没出现过
+    （逐份 jsonl 数过，见下），所以没有任何一条历史用例的判定因此改变。
+
+        eval/results/*.jsonl 全量统计：用例 301 条，ok=False 0 条
+
+C. 修后代码 + 新断言器 —— 3 条全绿，并且逐条核对了"记忆真的生效"
+
+    pass=3  共 3 条      完成率 3/3 = 100.0%
+
+    轨迹形状（jsonl 的 trace 字段）：
+        M-001  n_turns=2  turn_sql_counts=[1, 1]     interrupts=4
+        M-002  n_turns=2  turn_sql_counts=[1, 1]     interrupts=4
+        M-003  n_turns=3  turn_sql_counts=[1, 1, 1]  interrupts=6
+
+    `turn_sql_counts` 全是 1，说明**切片生效**：第 2/3 轮只算了自己那一轮的 SQL，
+    没有把前面轮次的 SQL 一起带进 sql_executed（否则 `_judge_executed` 会回头认
+    前面任意一条，最后一轮答错也可能被判成 PASS —— 这是切片存在的唯一理由）。
+
+    源码级核对（stdout 里 `[collect_user_info] 本轮提取结果`）：
+      M-002 第 2 轮（新会话）：{'district': '光明区', 'budget_max': 1000.0,
+                              'room_type': '一居室', 'room_count': 10}
+        → 该轮问句里没有任何预算数字，1000 只能来自**上一个会话**写进 store 的偏好
+      M-003 第 2 轮：{'budget_max': 2200.0, 'room_type': '一居室', ...} → 来自 store
+      M-003 第 3 轮：{'budget_max': 1000.0, ...} → 取的是**消息里的** 1000，
+        覆盖了 store 里的 2200（"冲突以最新用户消息为主"这条明文约定成立）
