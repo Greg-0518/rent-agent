@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from src.agent.common.content import ContextSchema
 from src.agent.common.llm import model
 from src.agent.common.sql_guard import rejection_message, validate_sql
-from src.agent.common.store import UserPreferences
+from src.agent.common.store import UserPreferences, read_preferences
 from src.agent.state.recommend import RecommendState, get_recommend_info
 
 
@@ -62,11 +62,14 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
     print("------------------    into collect_user info    ----------------------------------------------")
     # 1.获取需要被解析的数据，最新的用户消息 + 用户的偏好数据
     user_messages = filter_messages(state["messages"], include_types="human")
-    pref = state.get("user_preferences")
-    if pref and (pref["budget_min"] or pref["budget_max"]):
+    # 必须走 read_preferences 正规化：state 里的 user_preferences 是 store 的原始
+    # dict，键集合随写侧（`exclude_none=True`）而变，直接下标会在"用户第一次只说
+    # 了预算上限"时 KeyError——且只在第二个会话暴露。见 common/store.py 的 docstring。
+    pref = read_preferences(state.get("user_preferences"))
+    if pref.budget_min or pref.budget_max:
         # 偏好中包含最高和最低的预算
-        budget_min = pref["budget_min"]
-        budget_max = pref["budget_max"]
+        budget_min = pref.budget_min
+        budget_max = pref.budget_max
         extract_messages = [
             HumanMessage(content="用户的历史偏好消息如下："
                                  f"1. 最低预算：{budget_min}"
@@ -192,9 +195,16 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
             updated_state["user_preferences"] = prefs.model_dump()
         else:
             # 有持久化信息，判断更新
+            #
+            # 这里**同时保留两个表示**，别合并：
+            #   prefs  —— store 的**原始 dict**，写回路径（下面就地改 + store.put）必须用它，
+            #             因为 pydantic 会把 UserPreferences 没声明的键丢掉，而那正是
+            #             reserve.py 存进来的 reserved_info。
+            #   stored —— 正规化后的对象，**只用来读**预算，缺键即 None，不会 KeyError。
             prefs = prefs_result[0].value
-            store_min = prefs["budget_min"]
-            store_max = prefs["budget_max"]
+            stored = read_preferences(prefs)
+            store_min = stored.budget_min
+            store_max = stored.budget_max
             cur_min = updated_state.get("budget_min")
             cur_max = updated_state.get("budget_max")
             update_min = False

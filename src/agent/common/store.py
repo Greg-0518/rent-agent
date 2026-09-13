@@ -46,3 +46,27 @@ class UserPreferences(BaseModel):
         default=None,
         description="用户预订过房源的列表"
     )
+
+
+def read_preferences(value) -> UserPreferences:
+    """把 store 里读出来的原始值正规化成 UserPreferences。
+
+    **为什么必须走这里、不能直接下标**：写侧是 `model_dump(exclude_none=True)`
+    （`node/recommend.py`、`node/reserve.py`），所以落库的 dict
+    **键集合随数据而变** —— 用户第一次只说了预算上限，库里就没有 `budget_min`
+    这个键；预定过的用户库里甚至只有 `reserved_info`。
+
+    后果是 `prefs["budget_min"]` 在这种情况下必然 KeyError，而且只在**第二个会话**
+    才炸：同一会话内新用户分支把不带 `exclude_none` 的完整键集合写进了 state，
+    只有新会话的 `get_store_info`（图的**第一个**节点）才重新从 store 读。
+    曾导致整个会话在入口就死。复现与回归检查：`eval/tools/probe_cross_session.py`。
+
+    统一从这里读，读者只需要处理 None，不必知道哪些键存在：
+    `UserPreferences` 的字段全是 Optional，缺键 → None；多出来的键被 pydantic
+    忽略（默认 `extra='ignore'`），不会因为库里多存了什么就崩。
+
+    刻意**不**吞 `ValidationError`：库里存的是我们自己写的，真出现形状损坏
+    应当显式报出来，而不是静默降级成"没有偏好"——那会让系统再问一遍用户，
+    把数据损坏伪装成正常交互。
+    """
+    return UserPreferences(**(value or {}))
