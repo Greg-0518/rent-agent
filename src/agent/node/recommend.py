@@ -197,10 +197,17 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
             # 有持久化信息，判断更新
             #
             # 这里**同时保留两个表示**，别合并：
-            #   prefs  —— store 的**原始 dict**，写回路径（下面就地改 + store.put）必须用它，
-            #             因为 pydantic 会把 UserPreferences 没声明的键丢掉，而那正是
-            #             reserve.py 存进来的 reserved_info。
+            #   prefs  —— store 的**原始 dict**，写回路径（下面就地改 + store.put）用它。
+            #             注意理由不是"pydantic 会丢掉 reserved_info"——那个字段在
+            #             UserPreferences 里是有声明的，实测 round-trip 不丢它。真正
+            #             会丢的只有 UserPreferences **未声明**的键，而今天并不存在这种
+            #             键（三处 store.put 全都经过 UserPreferences，已逐处核对）。
+            #             仍然选原始 dict，是因为：① 对"将来库里多出未声明的键"免疫，
+            #             这一点没有任何机制在强制保证；② 保持"少写"——model_dump 会把
+            #             exclude_none 省掉的键补成显式 None 再存回去，抵消写侧意图。
             #   stored —— 正规化后的对象，**只用来读**预算，缺键即 None，不会 KeyError。
+            # 另：prefs 就是 store 的**活对象**（InMemoryStore 不复制），下面就地改会
+            # 直接改到 store 条目上，store.put 失败也留痕——见 R5 §8 第 5 项，本轮未修。
             prefs = prefs_result[0].value
             stored = read_preferences(prefs)
             store_min = stored.budget_min
