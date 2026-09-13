@@ -30,6 +30,14 @@
 > **同一份 trace 离线重判**出来的 —— 目的是把"断言器的影响面"和"模型的影响面"
 > 分开看，不是替代重跑。
 
+**本次一共三块工作**，前两块改判定口径、第三块改执行侧闸口：
+
+| 块 | 章节 | 一句话 |
+|---|---|---|
+| 一 | §1–§11 | 断言器回看**所有**执行过的 SQL（44 → 56）、黄金放宽、新归因码 |
+| 二 | §12–§15 | 跨会话 `KeyError`（D6）＋ **多轮/跨会话用例**（单轮结构上测不到它） |
+| 三 | §16 | **代码沙箱**（模型写的 Python 真跑）与 **SQL 守卫**（模型写的 SQL 真打库）的收紧 |
+
 ---
 
 ## 1. 改动 1（主改）：断言器回看**所有**执行过的 SQL，而不是只判最后一条
@@ -312,6 +320,19 @@ L3-001 正好命中：黄金 `>= 30` 得 4 行，翻成 `> 30` 得 3 行 = 模�
 | [sql/001_normalize_decoration_wording.sql](sql/001_normalize_decoration_wording.sql) | 新增 | id 45「精装三房」→「精装修三房」（§8.11 末尾） |
 | [eval/tools/apply_sql.py](eval/tools/apply_sql.py) | 新增 | 执行 `sql/*.sql` 迁移的入口，可写账号 + 缺省空跑 |
 
+§16（第三块）另动了这几个文件，不在这张表的口径里，单列：
+
+| 文件 | 状态 | 内容 |
+|---|---|---|
+| [src/agent/node/finance.py](src/agent/node/finance.py) | 改 | 代码沙箱三层：AST 白名单 + 进程收紧 + 资源收紧 |
+| [src/agent/state/finance.py](src/agent/state/finance.py) | 改 | `ExecutionResult` 补 `rejected` / `truncated`（走既有重试回路） |
+| [src/agent/common/sql_guard.py](src/agent/common/sql_guard.py) | 改 | 掩码扫描：字面量/注释不再参与判定，LIMIT 改写不再穿进字面量 |
+| [tests/unit_tests/test_code_sandbox.py](tests/unit_tests/test_code_sandbox.py) | 新增 | 沙箱单测 37 条 |
+| [tests/unit_tests/test_sql_guard.py](tests/unit_tests/test_sql_guard.py) | 改 | +11 条（31 → 42），四种失效模式的回归钉子 |
+| [eval/tools/audit_guard_equiv.py](eval/tools/audit_guard_equiv.py) | 新增 | 守卫改动前后的判决等价性审计（162 条重放） |
+| [eval/tools/probe_sandbox_hardening.py](eval/tools/probe_sandbox_hardening.py) | 新增 | 沙箱改动前后的行为取证（E/F/G/H 四个探针） |
+| [docs/Roomie知识图谱_架构与代码定位.md](docs/Roomie知识图谱_架构与代码定位.md) | 改 | 代码定位图同步到新行号与三层结构 |
+
 **没动**：`eval/cases/` 里除 L4-006 外的用例、`eval/conftest.py`。
 
 > ⚠ **种子的说法也要更正**：本轮**动过** `house` 表的一个字段值（id 45 的 `description`，
@@ -580,7 +601,7 @@ if updated_state.get("budget_min") is None or updated_state.get("budget_max") is
 
 # 5) 断言器自测（黄金回灌 + 反方向，需要 MySQL）—— 注意是 eval/ 下这个
 .\venv\Scripts\python.exe -m pytest eval\test_asserters.py -q      # 20 passed
-.\venv\Scripts\python.exe -m pytest tests\unit_tests -q            # 39 passed（不依赖库）
+.\venv\Scripts\python.exe -m pytest tests\unit_tests -q            # 97 passed（不依赖库；含 §16 的沙箱/守卫 86 条）
 
 # 6) 边界体检（口径是否自相矛盾）
 .\venv\Scripts\python.exe eval\tools\audit_boundary.py
@@ -909,6 +930,15 @@ trace.ok=False: 0
 | `74f07e4` | **eval：harness 支持多轮用例 + 新归因 GRAPH_CRASH（§15）** | **评测** |
 | `8b4166f` | eval：多轮用例的证据（修前红/修后绿/旧断言器会跳过） | 证据 |
 | `245e9cb` | docs+eval：R5 §8.13/§8.14/§15 与基线换代 §10.1（+ `full-mt` 轨迹） | 文档 + 证据 |
+| `1a604d3` | docs：R5 §14 补两个真实提交号 | 文档 |
+| `a69fd5c` | **src：收紧代码沙箱与 SQL 守卫（§16）** | **生产** |
+| `9aac5ea` | tests：沙箱 37 条 + SQL 守卫 +11 条 | 测试 |
+| `855f8e4` | eval(tools)：守卫等价性审计 + 沙箱行为取证 | 评测工具 |
+| `aeb514c` | eval(results)：收紧后的 L5 端到端轨迹 | 证据 |
+
+> **§16 所在的这次 docs 提交不在表内** —— 它的哈希要等它自己被提交之后才知道。
+> 要看它：`git log -1 --format=%H`（表里最后一行 `aeb514c` 之后的那一笔），
+> 或者 `git log --oneline -1 -- "docs/项目B_评测改动说明_R5.md"`。
 
 > `.claude/settings.local.json`（本机权限白名单，含 `D:\` 绝对路径与 `PowerShell(*)`
 > 通配）**未提交**，留在工作区。
@@ -1031,4 +1061,221 @@ trace.ok=False: 0
 **62 条带 2 次中断**（首次预算追问 + 后续预订追问），问句里自带价格上限那 7 条
 **7/7 全部被追问**——证据、复核命令、以及"`不提供` 会凭空补出 `budget_min=500`"
 那条（疑似，未验证）都在 §8.13。
+
+---
+
+## 16. 沙箱与 SQL 守卫的收紧（这次改动的第三块）
+
+### 16.0 为什么是这两处
+
+它们是"**模型生成的代码**"和"**模型生成的 SQL**"的最后一道闸口——两条**输入完全不可信**
+的路径：
+
+| 闸口 | 位置 | 拦什么 |
+|---|---|---|
+| 代码沙箱 | [node/finance.py](src/agent/node/finance.py) | 租金计算节点把模型写的 Python **真的跑起来** |
+| SQL 守卫 | [common/sql_guard.py](src/agent/common/sql_guard.py) | text2SQL 把模型写的 SQL **真的打到 MySQL 上** |
+
+升级前**两个文件一条测试都没有**（`tests/` 下 grep `sql_guard` / `execute_code_sandbox`
+零匹配）。所以这一节的写法和前面几节一样：**先取证，再改，改完把证据钉成测试和可复跑的命令。**
+
+取证工具 [eval/tools/probe_sandbox_hardening.py](eval/tools/probe_sandbox_hardening.py)
+把 `git show HEAD:src/agent/node/finance.py` 取出来当**独立模块**加载，
+于是同一个探测脚本能同时喂给"旧"和"新"两版实现——差别只可能来自被测代码本身，
+不来自探测代码：
+
+```powershell
+.\venv\Scripts\python.exe eval\tools\probe_sandbox_hardening.py          # 旧 = HEAD
+.\venv\Scripts\python.exe eval\tools\probe_sandbox_hardening.py --old HEAD~1
+```
+
+（与 §16.5 那个审计工具同一个纪律：**提交前跑才有"前后"**，提交后它退化成
+一份"当前实现会拒绝哪四类行为"的自检。）
+
+### 16.1 代码沙箱：四类行为，改前改后 `[实测]`
+
+| # | 探测（模型生成的代码里真这么写就能做到） | 升级前 | 升级后 |
+|---|---|---|---|
+| E | `import os` 读环境变量 | `env_visible=True`；`cwd=D:\kindsOfProject\rent-agent`（**仓库根**） | `rejected=True` · `banned_import:os`，**解释器根本没启动** |
+| F | `subprocess.run(...)` 起子进程 + `open('.tmp_pwned.txt','w')` 往仓库写文件 | `subprocess_ok=True` `write_ok=True` | `rejected=True` · `banned_import:subprocess` |
+| G | `while True: pass`（死循环） | 超时被杀 ✅（**这条原来就是好的**） | 同左（保留） |
+| H | `while True: print('x'*100)`（输出洪水） | `stdout_len=0`——输出全丢，5 秒在烧内存 | `stdout_len=200000`，封顶保留 + `truncated=True`，并被报成超时 |
+
+E 这条的严重度得说清楚：**`.env` 里的 API key 就在子进程的环境变量里**，
+而 `cwd` 是仓库根——一次 `open('src/agent/common/llm.py','w')` 就能改生产代码。
+升级前的实现是 `subprocess.run(code, capture_output=True, timeout=...)`，
+只做了一件事：超时。G 之所以"原来就是好的"，是因为那是它唯一做了的事。
+
+### 16.2 三层，各自的理由
+
+**① 静态白名单** [`check_code_safety`](src/agent/node/finance.py#L97)：AST 走两遍，
+模型不可信，所以在**起进程之前**就判。它是个纯函数（不吃环境、不起进程），
+所以能逐条列规则做单测。四类规则：
+
+- `banned_node:` Global / Nonlocal / ClassDef / AsyncFuncDef / Await / AsyncFor / AsyncWith / Yield / YieldFrom / Delete
+- `banned_import:` 只允许 `math statistics decimal fractions itertools functools collections datetime json`
+- `banned_name:` `eval exec compile open input __builtins__ ...`（含 dunder 名）
+- `banned_call:` 调用既不在内置白名单、也不是本文件自己定义的函数
+- 另加 `Attribute.attr` 以下划线开头 → `private_attr:`
+
+**为什么模块白名单放得比较宽（`math/decimal/statistics`…）**：prompt 明文要求"计算金额保留
+2 位小数"，`Decimal` 是最自然的写法。白名单收得过紧的代价不是"更安全"，而是
+`fix_code` 反复重试、最后把一条本该答对的题答成答不出——**安全层和用例通过率是同一个
+预算的两端**，所以放行清单要按"这个节点真的需要算什么"来定，不是按"最小权限"来定。
+
+**② 进程收紧**：`sys.executable`（不依赖 PATH 上的 `python`）+ `-I -B -X utf8`
+（隔离模式：忽略 `PYTHON*` 环境变量、不把 cwd 加进 `sys.path`、不写 `.pyc`），
+`cwd` 给一次性临时目录（**代码里的相对路径不再落到仓库**），
+环境变量**整个不继承**（`_sandbox_env` 只给 `PATH`/`TEMP`/`TMP`）。
+
+> `_sandbox_env` 里**刻意没有**写 `PYTHONPATH=…` 之类的硬化项：`-I` 已经隐含 `-E`，
+> 写了也是惰性的。这种"写了不生效"的假硬化比不写更坏——下一个人会以为它在起作用。
+
+**③ 资源收紧**：超时杀进程（保留超时前输出）、输出**读干 + 截断**（两个线程各自
+drain 到 200k 字符后继续读但丢弃——**只截断不读干，子进程会卡在写管道上**，
+最后被误报成"超时"）、临时目录 `finally` 删。
+
+### 16.3 我自己在实现里踩出来的两个坑（都留了测试）
+
+1. **白名单把"调用自己定义的函数"也拦了**：`def area(w, h): ...; print(area(3,4))`
+   → `banned_call:area`。修法是两遍走：第一遍先收集本文件 `FunctionDef` 的名字与
+   赋值目标（Store 上下文），第二遍才判 `Call`。顺带确认"改名绕过黑名单"仍然堵着——
+   `x = eval; x()` 里的 `eval` 是 Name 节点，照样命中 `banned_name:eval`（有测试钉住）。
+2. **输出为 0**：第一版重写后探针 H 报 `stdout_len=0`，看起来像"截断生效"，
+   实际是**子进程被 kill 时缓冲里的东西还没进管道**。这不是这次要修的问题
+   （真实用例里模型很少写 `flush=True`），但测试里得写清楚，否则
+   `test_timeout_keeps_partial_output` 会变成一条随机红绿的测试。
+
+### 16.4 SQL 守卫：掩码扫描
+
+原来的实现是**先剥注释、再对整串原文做正则**。于是**字符串字面量里的内容会参与判定**——
+四种失效模式（两种误拒、一种篡改、一种静默改语义）：
+
+| 失效模式 | 输入 | 旧版行为 |
+|---|---|---|
+| 误拒 | `... WHERE description LIKE '%;%'` | `allowed=False` · `multi_statement`——分号在**字面量里** |
+| **篡改** | `... LIKE '%LIMIT 1000%'` | `allowed=True`，但 SQL 被**改写成** `... LIKE '%LIMIT 50%'` |
+| 误拒 | `... LIKE '%DROP%'` | `allowed=False` · `deny_keyword:DROP` |
+| 静默改语义 | `... WHERE id IN (SELECT id FROM house LIMIT 999)` | 子查询的 `LIMIT 999` 被当成顶层，**收紧成 50** |
+
+第二条最难看：它不改判定、只改 SQL，**没有任何日志或原因会暴露它**——
+用户问"描述里含 LIMIT 1000 的房源"，拿回的是另一批房子。
+
+**修法**：`_mask()` 把**字符串字面量**与注释的内部字符替换成空格、**长度不变**，
+所有关键字/表名/分号/顶层 LIMIT 的判定都在掩码串上做；只有 LIMIT 的**插入位置**
+仍用原文的偏移。等长是关键——掩码串的下标和原文一一对应，`_enforce_limit` 才能
+同时拿到"判定用串"和"改写用原文"。
+
+**两处刻意不掩码**（都写在 `_mask` 的 docstring 里，因为都是踩出来的）：
+
+- **反引号**：它是**标识符**不是字面量。掩掉内容会让 `SELECT * FROM \`users\`` 里的表名
+  消失，**表黑名单被绕过**——这是我在实现过程中真的踩出来的漏判（`FROM \`users\``
+  一度变成放行），不是推演。修完 `` FROM `users` `` 重新返回 `deny_table:users`。
+- **`#` 行注释**：`#` 出现在反引号标识符里会把本行剩下的一切掩成空格 → **fail-open**。
+  本项目 SQL 里从来没出现过 `#` 注释（336 条历史轨迹 0 次），所以干脆不认它。
+  代价是"用 `#` 当注释的 SQL"可能被误拒——**方向是安全的那一侧**。
+
+### 16.5 证据 `[实测]`
+
+**① 等价性审计（新增工具）** [eval/tools/audit_guard_equiv.py](eval/tools/audit_guard_equiv.py)：
+取 `HEAD` 版守卫当独立模块，把**历史轨迹里真正过过守卫的每一条 SQL**（`sql_executed`
++ `final_sql` + 全部黄金 SQL）重放给新旧两版，逐条比 `allowed / rule / 改写后的 SQL`。
+零 LLM 成本、不连数据库：
+
+```powershell
+.\venv\Scripts\python.exe eval\tools\audit_guard_equiv.py   # 必须在**提交前**跑，见下
+```
+
+```
+— 内置样例（本次要修的四种失效模式）—
+  ≠ 分号在字面量里（误拒 · multi_statement）
+  ≠ LIMIT 在字面量里（篡改 · 把 '%LIMIT 1000%' 改成 '%LIMIT 50%'）
+  ≠ 写关键字在字面量里（误拒 · deny_keyword:DROP）
+  ≠ 子查询 LIMIT 被当顶层收紧（静默改语义）
+
+— 真实数据重放 —
+重放 SQL 162 条（已去重）
+  结论相同 162 条
+  变宽松 0 条   变严格 0 条   其它 0 条
+```
+
+四条样例全部 `≠` 是"**确实改了**"，162 条真实 SQL 全部相同是"**没有连带伤**"——
+这两句话要一起说才有意义。**所以这轮没有重跑全量评测**：守卫的输入集合在真实数据上
+判决等价，重跑只会得到一份新的随机失败名单，不会得到新信息。
+
+> 该工具的 docstring 里写死了一条纪律：它比的是"改前 vs 改后"，**提交之后再跑就是
+> 拿同一版比自己，输出必然是 0**。工具会从 git ref 取旧版，所以提交后它只会变成
+> 一个恒真检查——放进 CI 之前必须知道这件事。
+
+**② 单测**：`test_sql_guard.py` **31 → 42 条**（新增 11 条，全是上面那四种失效模式的
+回归钉子，含反引号绕过那两条）+ `test_guard_wiring.py` 7 条（接线加在 `sql_db_query`
+之外，与守卫本身解耦）；`test_code_sandbox.py` **新增 37 条**（放行 8 / 拦截 19 /
+进程接线 2 / 资源与端到端 8）。全量：
+
+```powershell
+.\venv\Scripts\python.exe -m pytest tests\unit_tests -q     # 97 passed
+```
+
+**③ 真实模型跑一遍**（静态白名单是新增闸口，必须确认**模型自己写的代码不会被误杀**——
+单测只能用手写样例）：
+
+```powershell
+.\venv\Scripts\python.exe .tmp_finance_e2e.py               # 临时脚本，已删
+# 复核时等价的做法：把两句问话喂给 finance_graph.invoke()，看 execution_result
+```
+
+```
+深圳三套房子月租 1200/1850/2300，押一付三共需多少？
+  → exit=0 rejected=False 重试 0，stdout='三套房子月租合计：5350 元\n押一付三共需准备：21400.00 元'
+租金 2500 元，年涨幅 3%，两年后月租？（保留 2 位小数）
+  → exit=0 rejected=False 重试 0，stdout='2652.25'
+```
+
+两条都 `rejected=False`、答案正确、**一次重试都没触发**——白名单没有误伤。
+
+**④ L5（拒答档）端到端**：`eval/results/sandbox-guard-l5.jsonl`，8 条 **全 PASS**。
+
+> ⚠ **但这 8 条没有一条证明"拒绝路径是通的"**，如实记账：`guard_fired_times: 0`、
+> `model_declined_itself: true` 出现在 **8/8** 条里——模型在生成 SQL 之前就自己拒了，
+> 守卫一次都没被执行到。所以"守卫接线在真实图里确实生效"的证据是
+> [tests/unit_tests/test_guard_wiring.py](tests/unit_tests/test_guard_wiring.py)
+> （把 `validate_sql` 换成桩，看它是否被调用、拒绝后是否不再执行），不是这一跑。
+> 这一跑能证明的只有一件事：**收紧之后 L5 档的 8 条全部照旧通过**。
+> 同类问题 §8.14 已经写过一次（"值得守"和"测到了"是两件事），这里再记一次。
+
+### 16.6 明确没做 / 残留缺口
+
+- **没上容器、不装 Docker**。作过比较：Windows 11 **家庭版**没有 Windows Sandbox
+  组件，容器路线要 Docker Desktop + WSL2 + **重启**，把一个"给生成的代码加一道闸口"的
+  需求变成项目级依赖（每个人的机器都要装）。当前三层挡住的是"读秘密 / 起进程 /
+  写文件 / 打死沙箱"，**代价是零依赖**。
+- **没有内存 / CPU 配额**。`resource` 是 POSIX-only，Windows 上得走 Job Object
+  （`pywin32`，新依赖）。现在只有"墙钟超时"，所以**一条 `x = [0]*10**9` 能把内存吃满**——
+  这是本节最实的残留缺口，写在这里而不是含糊过去。
+- **没有容器级文件系统隔离**：临时目录只是"干净的 cwd"，不是"看不见的根"。
+  配合"环境变量不继承"，能走的路已经很少，但**不是内核级隔离**。
+- **没引入 `sqlglot`**。用真正的 SQL 解析器是更正确的路线，但它是新依赖；
+  掩码方案零依赖且"162 条等价"已经量过。真要做，`audit_guard_equiv.py` 现成能用
+  来量"换成解析器之后判决变了多少条"。
+- **没动生成侧**（prompt / 模型选择）。这一节只收紧执行侧——按 §3.2 的说法，
+  prompt 是请求，执行侧白名单是唯一能兜住的。
+
+### 16.7 复核命令（本节自包含）
+
+```powershell
+# 守卫：改动前后的判决对照（**只能在提交前跑**，见 16.5）
+.\venv\Scripts\python.exe eval\tools\audit_guard_equiv.py
+
+# 沙箱：同一个探测脚本喂给 HEAD 版与工作区版（提交前跑）
+.\venv\Scripts\python.exe eval\tools\probe_sandbox_hardening.py
+#   预期：E/F 旧版 `env_visible=True`/`write_ok=True` → 新版 `rejected=True`；
+#        H 旧版 stdout_len=0 → 新版 200000
+
+# 单测
+.\venv\Scripts\python.exe -m pytest tests\unit_tests -q            # 97 passed
+.\venv\Scripts\python.exe -m pytest tests\unit_tests\test_code_sandbox.py tests\unit_tests\test_sql_guard.py tests\unit_tests\test_guard_wiring.py -q   # 86 passed
+
+# L5 端到端（会真的调模型；8 条，`-k L5` 选出来正好是那 8 条）
+.\venv\Scripts\python.exe -m pytest eval -k "L5" --run-id sandbox-guard-l5 -q
+```
 

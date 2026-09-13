@@ -82,10 +82,10 @@ START
 - **流程**（`recommend.py` + `node/recommend.py`）：
   1. `collect_user_info`：pydantic `UserInfo`（8 字段）提取需求 → 缺城市/预算时 `interrupt` 追问 → 用户答"不提供"则填默认值（随机城市/500-3000 元/6 套）→ **预算写回 Store（只扩不缩合并）** → 拼规范化查询消息
   2. `list_tables` → `call_get_schema`（`tool_choice="any"` 强制调 sql_db_schema）→ `get_schema`（ToolNode）
-  3. `generate_query`：text-to-SQL prompt（注入 dialect、top_k=room_count、**禁 DML**）→ `check_query`（SQL 专家 checklist 复查改写）→ `run_query`（ToolNode 执行）
+  3. `generate_query`：text-to-SQL prompt（注入 dialect、top_k=room_count、**禁 DML**）→ `check_query`（SQL 专家 checklist 复查改写）→ `run_query`（ToolNode 执行，执行前**必过安全层** `common/sql_guard.validate_sql`：只读白名单 + 强制 LIMIT + 敏感表黑名单）
   4. **执行结果回灌 generate_query 循环**，直到 LLM 不再发起 tool call（`should_continue`）→ END
 - **关键技术**：SQLDatabaseToolkit 工具集；DB 连不上时 `_DB_AVAILABLE=False` 全节点降级返回错误提示（node/recommend.py:249-274）；check_query 复用原 message id 保持消息链一致（:341）
-- **面试考点**：为什么"生成→检查→执行→回灌"循环而不是一次生成（自修复）；check_query 检查哪些 SQL 常见错误（NULL NOT IN / UNION vs UNION ALL / BETWEEN 边界 / 类型不匹配）；为什么禁 DML 要写进 prompt 而且最好再加一层执行侧白名单（衔接项目 B L5 档）
+- **面试考点**：为什么"生成→检查→执行→回灌"循环而不是一次生成（自修复）；check_query 检查哪些 SQL 常见错误（NULL NOT IN / UNION vs UNION ALL / BETWEEN 边界 / 类型不匹配）；为什么禁 DML 要写进 prompt **而且**要再加一层执行侧白名单（prompt 只是请求，模型可以不听；执行侧白名单是唯一能兜住的——见 `common/sql_guard.py`）
 
 ## 3.3 合同审核子图（RAG 四段流水线）
 
@@ -95,9 +95,9 @@ START
 
 ## 3.4 租金计算子图（代码生成-执行-修复循环）
 
-- **流程**（`finance.py` + `node/finance.py`）：`generate_code`（```python 块提取，无块则按行前缀兜底提取）→ `execute_code`（tempfile 写盘 + subprocess 跑，产出 ExecutionResult{stdout/stderr/exit_code/execution_time/timed_out}）→ `should_retry`：成功→`generate_answer`；失败且 retry_count<3→`correct_error`（LLM 拿 stderr 修代码）→ 回执行；3 次仍败→give_up END
-- **关键技术**：错误信息直接回灌 LLM（stderr 是最好的修复上下文）；重试计数放 State 里由条件边读取
-- **面试考点**：为什么 LLM 算租金要生成代码而不是直接算（数值计算要确定性，LLM 心算会错）；沙箱现在只有 timeout 隔离，生产要加什么（资源限制/只读文件系统/容器化——已列入项目 B M0）
+- **流程**（`finance.py` + `node/finance.py`）：`generate_code`（```python 块提取，无块则按行前缀兜底提取）→ `execute_code`（**静态白名单** `check_code_safety` → 一次性临时目录写盘 + `sys.executable -I -B -X utf8` 子进程跑，产出 ExecutionResult{stdout/stderr/exit_code/execution_time/timed_out/rejected/truncated}）→ `should_retry`：成功→`generate_answer`；失败且 retry_count<3→`correct_error`（LLM 拿 stderr 修代码）→ 回执行；3 次仍败→give_up END
+- **关键技术**：错误信息直接回灌 LLM（stderr 是最好的修复上下文）；重试计数放 State 里由条件边读取；沙箱三层——AST 白名单（禁 import 白名单外的模块/魔术属性/`open|eval|exec|input`）、进程收紧（`-I` 隔离、cwd=临时目录、**env 不继承父进程**）、资源收紧（超时杀进程、输出截断到 200k 字符）
+- **面试考点**：为什么 LLM 算租金要生成代码而不是直接算（数值计算要确定性，LLM 心算会错）；沙箱还剩什么缺口（**没有内存/CPU 配额**——Windows 上没有 stdlib 的 rlimit，也没有容器级文件系统隔离；真隔离要上容器）
 
 ## 3.5 预定子图（人机协作信息收集）
 
@@ -156,6 +156,8 @@ START
 | DB 连接与降级 | node/recommend.py:237-274 | SQLDatabaseToolkit + _DB_AVAILABLE |
 | text-to-SQL 主 prompt（禁 DML） | node/recommend.py:300-319 | dialect/top_k 注入 |
 | SQL 质检 checklist | node/recommend.py:321-342 | 8 类常见错误复查 |
+| **执行侧安全层**（只读白名单/强制 LIMIT/表黑名单，**掩码扫描**） | common/sql_guard.py:280-336 | validate_sql（109-172 是 `_mask`） |
+| 安全层单测（42 条 + 接线 7 条） | tests/unit_tests/test_sql_guard.py + test_guard_wiring.py | 接线加在了 sql_db_query 之外 |
 | 保留推荐参数模板 | state/recommend.py:19-40 | get_recommend_info |
 
 ### 合同审核（RAG）
@@ -179,11 +181,13 @@ START
 
 | 要讲的东西 | 位置 | 一句话 |
 |---|---|---|
-| 代码生成（块提取+兜底） | node/finance.py:14-36 | generate_code |
-| **沙箱执行**（tempfile+subprocess+timeout=30） | node/finance.py:39-76 | execute_code_sandbox |
-| LLM 修复代码 | node/finance.py:79-84 | fix_code |
-| 重试控制（≤3 次） | node/finance.py:133-140 | should_retry |
-| ExecutionResult/FinanceState | state/finance.py:9-39 | 五字段执行结果 |
+| 代码生成（块提取+兜底） | node/finance.py:15-36 | generate_code |
+| **沙箱静态白名单**（AST：模块/属性/名字/调用四类规则） | node/finance.py:42-160 | check_code_safety |
+| **沙箱执行**（临时目录 + `-I -B -X utf8` + 最小 env + 超时/输出上限） | node/finance.py:162-308 | execute_code_sandbox |
+| LLM 修复代码 | node/finance.py:311-317 | fix_code |
+| 重试控制（≤3 次） | node/finance.py:365-372 | should_retry |
+| ExecutionResult/FinanceState | state/finance.py:9-47 | 七字段执行结果（含 rejected/truncated） |
+| 沙箱单测（37 条） | tests/unit_tests/test_code_sandbox.py | 放行/拦截/进程接线/超时截断 |
 
 ### 预定
 
