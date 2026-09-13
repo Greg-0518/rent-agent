@@ -56,10 +56,14 @@ def read_preferences(value) -> UserPreferences:
     **键集合随数据而变** —— 用户第一次只说了预算上限，库里就没有 `budget_min`
     这个键；预定过的用户库里甚至只有 `reserved_info`。
 
-    后果是 `prefs["budget_min"]` 在这种情况下必然 KeyError，而且只在**第二个会话**
-    才炸：同一会话内新用户分支把不带 `exclude_none` 的完整键集合写进了 state，
-    只有新会话的 `get_store_info`（图的**第一个**节点）才重新从 store 读。
-    曾导致整个会话在入口就死。复现与回归检查：`eval/tools/probe_cross_session.py`。
+    后果是 `prefs["budget_min"]` 在这种情况下必然 KeyError，而且**不在当场**炸：
+    那一轮走的是写侧新用户分支，它把不带 `exclude_none` 的完整键集合（值为 None）
+    写进了 state，所以同一轮读不到缺键的版本。要等**下一次调用**——
+    `get_store_info` 是图的**入口**（`graph.py` 的 `add_edge(START, ...)`），
+    **每轮都重跑**且**无条件**用 store 的值覆盖 state（`node/main.py`），
+    于是缺键版本被盖进 state。新会话会炸，**同一会话发第二条消息也会**。
+    曾导致整个会话在入口就死。复现与回归检查（两种触发都有）：
+    `eval/tools/probe_cross_session.py`。
 
     统一从这里读，读者只需要处理 None，不必知道哪些键存在：
     `UserPreferences` 的字段全是 Optional，缺键 → None；多出来的键被 pydantic

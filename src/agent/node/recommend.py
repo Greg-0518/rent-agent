@@ -64,7 +64,9 @@ def collect_user_info(state: RecommendState, runtime: Runtime[ContextSchema], *,
     user_messages = filter_messages(state["messages"], include_types="human")
     # 必须走 read_preferences 正规化：state 里的 user_preferences 是 store 的原始
     # dict，键集合随写侧（`exclude_none=True`）而变，直接下标会在"用户第一次只说
-    # 了预算上限"时 KeyError——且只在第二个会话暴露。见 common/store.py 的 docstring。
+    # 了预算上限"时 KeyError——而且**不在当场**，要等下一次调用（入口节点
+    # get_store_info 每轮重跑并覆盖 state）：新会话会炸，同一会话发第二条消息也会。
+    # 见 common/store.py 的 docstring 与 eval/tools/probe_cross_session.py。
     pref = read_preferences(state.get("user_preferences"))
     if pref.budget_min or pref.budget_max:
         # 偏好中包含最高和最低的预算

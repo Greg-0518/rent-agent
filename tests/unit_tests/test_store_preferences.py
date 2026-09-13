@@ -9,8 +9,10 @@
     读侧 node/recommend.py  `prefs["budget_min"]`
         → KeyError
 
-只在**第二个会话**暴露：同一会话内新用户分支把不带 exclude_none 的完整键集合
-写进了 state，只有新会话的 `get_store_info`（图的第一个节点）才重新从 store 读。
+只在**下一次调用**暴露：那一轮走写侧新用户分支，把不带 exclude_none 的完整键集合
+写进了 state，所以同轮读不到缺键版本。下一轮 `get_store_info`（图的入口，**每轮都
+重跑**且无条件覆盖 state）才把缺键版本盖进去——新会话会炸，**同一会话发第二条消息
+也会**（两种触发都在 probe 里跑过）。
 
 端到端复现在 `eval/tools/probe_cross_session.py`（要真模型 + 真库）；
 这里是不依赖任何外部资源的那一半，秒级可跑。
