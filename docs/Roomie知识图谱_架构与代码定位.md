@@ -4,6 +4,7 @@
 - **源码位置**：`upload/rent-agent-extracted/agent - 副本/`（本副本内 import 路径为 `src.agent.*`，对应原工程 `src/agent/` 目录）
 - **用途**：三层导航——L1 看懂全局架构 → L2 吃透模块流程 → L3 秒查"面试官问到 X，代码在哪一行"
 - **配套**：`interview_prep/Roomie面试题库_源码深挖.md`（深挖题）、`interview_prep/项目B_评测Harness/`（评测设计）
+- **执行侧闸门的原理**：[代码沙箱与SQL守卫_原理说明.md](代码沙箱与SQL守卫_原理说明.md)（代码沙箱三层 + SQL 守卫掩码扫描，含威胁模型与残留缺口）
 
 ---
 
@@ -85,7 +86,7 @@ START
   3. `generate_query`：text-to-SQL prompt（注入 dialect、top_k=room_count、**禁 DML**）→ `check_query`（SQL 专家 checklist 复查改写）→ `run_query`（ToolNode 执行，执行前**必过安全层** `common/sql_guard.validate_sql`：只读白名单 + 强制 LIMIT + 敏感表黑名单）
   4. **执行结果回灌 generate_query 循环**，直到 LLM 不再发起 tool call（`should_continue`）→ END
 - **关键技术**：SQLDatabaseToolkit 工具集；DB 连不上时 `_DB_AVAILABLE=False` 全节点降级返回错误提示（node/recommend.py:249-274）；check_query 复用原 message id 保持消息链一致（:341）
-- **面试考点**：为什么"生成→检查→执行→回灌"循环而不是一次生成（自修复）；check_query 检查哪些 SQL 常见错误（NULL NOT IN / UNION vs UNION ALL / BETWEEN 边界 / 类型不匹配）；为什么禁 DML 要写进 prompt **而且**要再加一层执行侧白名单（prompt 只是请求，模型可以不听；执行侧白名单是唯一能兜住的——见 `common/sql_guard.py`）
+- **面试考点**：为什么"生成→检查→执行→回灌"循环而不是一次生成（自修复）；check_query 检查哪些 SQL 常见错误（NULL NOT IN / UNION vs UNION ALL / BETWEEN 边界 / 类型不匹配）；为什么禁 DML 要写进 prompt **而且**要再加一层执行侧白名单（prompt 只是请求，模型可以不听；执行侧白名单是唯一能兜住的——见 `common/sql_guard.py`；**掩码扫描的原理与四种被修掉的失效模式见 [代码沙箱与SQL守卫_原理说明.md](代码沙箱与SQL守卫_原理说明.md) §6**）
 
 ## 3.3 合同审核子图（RAG 四段流水线）
 
@@ -97,7 +98,7 @@ START
 
 - **流程**（`finance.py` + `node/finance.py`）：`generate_code`（```python 块提取，无块则按行前缀兜底提取）→ `execute_code`（**静态白名单** `check_code_safety` → 一次性临时目录写盘 + `sys.executable -I -B -X utf8` 子进程跑，产出 ExecutionResult{stdout/stderr/exit_code/execution_time/timed_out/rejected/truncated}）→ `should_retry`：成功→`generate_answer`；失败且 retry_count<3→`correct_error`（LLM 拿 stderr 修代码）→ 回执行；3 次仍败→give_up END
 - **关键技术**：错误信息直接回灌 LLM（stderr 是最好的修复上下文）；重试计数放 State 里由条件边读取；沙箱三层——AST 白名单（禁 import 白名单外的模块/魔术属性/`open|eval|exec|input`）、进程收紧（`-I` 隔离、cwd=临时目录、**env 不继承父进程**）、资源收紧（超时杀进程、输出截断到 200k 字符）
-- **面试考点**：为什么 LLM 算租金要生成代码而不是直接算（数值计算要确定性，LLM 心算会错）；沙箱还剩什么缺口（**没有内存/CPU 配额**——Windows 上没有 stdlib 的 rlimit，也没有容器级文件系统隔离；真隔离要上容器）
+- **面试考点**：为什么 LLM 算租金要生成代码而不是直接算（数值计算要确定性，LLM 心算会错）；沙箱还剩什么缺口（**没有内存/CPU 配额**——Windows 上没有 stdlib 的 rlimit，也没有容器级文件系统隔离；真隔离要上容器）；**三层各自的原理、AST 为什么不能用正则代替、白名单为什么故意放宽见 [代码沙箱与SQL守卫_原理说明.md](代码沙箱与SQL守卫_原理说明.md) §1–§5、§7**
 
 ## 3.5 预定子图（人机协作信息收集）
 
