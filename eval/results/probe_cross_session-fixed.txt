@@ -1,48 +1,33 @@
-﻿.\venv\Scripts\python.exe : D:\kindsOfProject\rent-agent\venv\Lib\site-packages\langgraph\checkpoint\serde\encrypted.py
-:5: LangChainPendingDeprecationWarning: The default value of `allowed_objects` will change in a future version. Pass an
- explicit value (e.g., allowed_objects='messages' or allowed_objects='core') to suppress this warning.
-At line:1 char:333
-+ ... NG="utf-8"; .\venv\Scripts\python.exe eval\tools\probe_cross_session. ...
-+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (D:\kindsOfProje...s this warning.:String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 
-  from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-D:\kindsOfProject\rent-agent\venv\Lib\site-packages\jieba\_compat.py:18: UserWarning: pkg_resources is deprecated as an
- API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as e
-arly as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
-  import pkg_resources
-rent_agent
-sql_db_query
-sql_db_schema
-sql_db_list_tables
-sql_db_query_checker
-会话一（首轮，store 为空）
-------------------    into collect_user info    ----------------------------------------------
-[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
-[collect_user_info] ENTER  state messages 数: 1
-[collect_user_info] 最后一条用户消息(前80字): 深圳预算3000元以下的房子，帮我推荐10套
-[collect_user_info] 本轮提取结果: {'city': '深圳', 'budget_max': 3000.0, 'room_count': 10}
-------------------    into collect_user info    ----------------------------------------------
-[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
-[collect_user_info] ENTER  state messages 数: 1
-[collect_user_info] 最后一条用户消息(前80字): 深圳预算3000元以下的房子，帮我推荐10套
-[collect_user_info] 本轮提取结果: {'city': '深圳', 'budget_max': 3000.0, 'room_count': 10}
-已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=10
+D6 修复之后：eval/tools/probe_cross_session.py 的输出
+=======================================================
+
+与 probe_cross_session-before.txt 是**同一个脚本、同样三次调用**，只差两个源文件
+的版本。对比读即可（"修前红、修后绿"）：
+
+    .\venv\Scripts\python.exe eval\tools\probe_cross_session.py
+
+---------------------------------------------------------------------------
+
+会话一·第一轮（store 为空）
    OK   user_preferences={'budget_min': None, 'budget_max': 3000.0, 'reserved_info': None}  store 条数=1
-会话二（同一用户，新会话）
-------------------    into collect_user info    ----------------------------------------------
-[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
-[collect_user_info] ENTER  state messages 数: 1
-[collect_user_info] 最后一条用户消息(前80字): 深圳预算2000元以下的房子，帮我推荐10套
-[collect_user_info] 本轮提取结果: {'city': '深圳', 'budget_max': 2000.0, 'room_count': 10}
-------------------    into collect_user info    ----------------------------------------------
-[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
-[collect_user_info] ENTER  state messages 数: 1
-[collect_user_info] 最后一条用户消息(前80字): 深圳预算2000元以下的房子，帮我推荐10套
-[collect_user_info] 本轮提取结果: {'city': '深圳', 'budget_max': 2000.0, 'room_count': 10}
-已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-2000.0, 房间数=10
+会话一·第二轮（**同一 thread**：验证同会话下一轮也命中）
+   OK   user_preferences={'budget_max': 3000.0}  store 条数=1
+会话二（同一用户，**新会话**）
    OK   user_preferences={'budget_max': 3000.0}  store 条数=1
 
 store 里的原始内容：
-  key= 0abca2ba-a7fd-48ae-9466-1ac2051ed1e9  value= {'budget_max': 3000.0}
+  key= ccc267a7-847e-4542-91f0-14dd493e79e7  value= {'budget_max': 3000.0}
+
+---------------------------------------------------------------------------
+
+怎么读这四行：
+
+1. 后两行是重点，不是"没崩就行"：它们打出来的 `user_preferences={'budget_max': 3000.0}`
+   **正是修前必然 KeyError 的那个形状**——缺 budget_min 键。也就是说这两轮
+   **真的走到了**那条曾崩掉的路径（由入口节点 get_store_info 从 store 读回），
+   并且活了下来。不是"路径没被覆盖到所以显示 OK"。
+2. 对比第一轮与后两轮的 `user_preferences` 是不同的：第一轮是写侧新用户分支留下的
+   齐全版本（三个键、值为 None），后两轮是入口从 store 读回来的**只有实际存在的键**
+   的版本。两者的差别就是这次 bug 的全部来源。
+3. store 里仍然只有 `{'budget_max': 3000.0}` —— **写侧一行没改**，`exclude_none=True`
+   保持原样（选的是读侧正规化，见 src/agent/common/store.py:read_preferences 的说明）。

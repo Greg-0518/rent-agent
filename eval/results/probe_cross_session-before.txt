@@ -1,0 +1,40 @@
+D6 修复之前：eval/tools/probe_cross_session.py 的输出
+=======================================================
+
+下面是三次调用的**结果行摘录**（诊断日志 [collect_user_info] / into collect_user info
+已略去，它们与结论无关；结果行是脚本 print 的原样）。
+
+复现方式（把两个源文件退回修复前那一版，跑同一个探针）：
+
+    git checkout cff4d8f -- src/agent/common/store.py src/agent/node/recommend.py
+    .\venv\Scripts\python.exe eval\tools\probe_cross_session.py
+    git checkout HEAD -- src/agent/common/store.py src/agent/node/recommend.py
+
+---------------------------------------------------------------------------
+
+会话一·第一轮（store 为空）
+   OK   user_preferences={'budget_min': None, 'budget_max': 3000.0, 'reserved_info': None}  store 条数=1
+会话一·第二轮（**同一 thread**：验证同会话下一轮也命中）
+   !!   KeyError: 'budget_min'   store 条数=1
+会话二（同一用户，**新会话**）
+   !!   KeyError: 'budget_min'   store 条数=1
+
+store 里的原始内容：
+  key= 143c8aa9-3104-4c0b-8875-5d38d3d736b3  value= {'budget_max': 3000.0}
+
+---------------------------------------------------------------------------
+
+怎么读这四行：
+
+1. **第一轮 OK**，因为这一轮走的是写侧的新用户分支——它写进 state 的是
+   `prefs.model_dump()`（**不带** exclude_none），键齐全，所以同轮读不到缺键版本。
+2. **第二轮（同一 thread）就炸了**，不是等到"下次再来"。`get_store_info` 是图的
+   入口（graph.py:34 `add_edge(START, "get_store_info")`），**每轮都重跑**，并且
+   无条件用 store 里的值覆盖 state（main.py:70-72 没有条件判断），于是上一轮
+   写进 state 的齐全版本被盖成了 {"budget_max": 3000.0}。
+3. **新会话同样炸**，同一机制。
+4. 最后一行是罪证：store 里那个 value **只有 budget_max 一个键**——因为写侧是
+   `model_dump(exclude_none=True)`（recommend.py:192），budget_min 为 None 时
+   连键都不落库。读侧 `prefs["budget_min"]` 于是必然 KeyError。
+
+即：KeyError 发生在**任何模型调用之前**，所以崩的是整个会话的入口，不是某条链路答得不好。

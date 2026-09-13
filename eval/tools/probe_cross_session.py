@@ -22,9 +22,21 @@
                                                 落库的 dict 里**没有 budget_min 这个键**
     读  `store_min = prefs["budget_min"]`      ← 直接下标取值，不是 .get()
 
-**为什么只在第二个会话炸**：同一会话内新用户分支把不带 `exclude_none` 的完整
-键集合写进了 state，只有新会话的 `get_store_info`（图的**第一个节点**）才重新
-从 store 读。所以不是"某条链路答得不好"，是**整个会话在入口就死**。
+**为什么不是当场就炸**：那一轮走的是**新用户分支**（`recommend.py` 的
+`updated_state["user_preferences"] = prefs.model_dump()`，**不带** `exclude_none`），
+写进 state 的键集合是完整的，所以同一轮读不到缺键的版本。
+
+**什么时候炸**：下一次调用。`get_store_info` 是图的**入口**
+（`graph.py:34` 的 `add_edge(START, "get_store_info")`），**每一轮都会重跑**，
+并且**无条件**用 store 里的值覆盖 state（`main.py:70-72` 没有条件判断）。
+于是：
+
+    新会话                    → 入口读 store → 覆盖 → 缺键 → KeyError
+    同一会话发第二条消息      → 入口重跑，同样覆盖      → KeyError
+
+两种都会。第二点容易漏（"同一会话内 state 里不是有完整版本吗"——是，
+但入口每轮都会把它盖掉）。本脚本把两种都走一遍。所以不是"某条链路答得不好"，
+是**整个会话在入口就死**。
 
 **修法（已定，2026-09-13）**：读侧统一走 `src/agent/common/store.py:read_preferences`，
 缺键当 None。**没有**改写侧的 `exclude_none=True` —— 读侧正规化能同时容下
@@ -56,9 +68,15 @@ USER_ID = "probe-user"
 STORE = InMemoryStore()
 
 
-def run(question: str, params: dict, thread: str) -> str:
-    """一个会话 = 一个新 thread_id，但 store 与 user_id 沿用。"""
-    graph = build_graph(checkpointer=MemorySaver(), store=STORE)
+def run(question: str, params: dict, thread: str, checkpointer=None) -> str:
+    """一个会话 = 一个新 checkpointer + 新 thread_id；store 与 user_id 沿用。
+
+    传 `checkpointer` 就是**同一会话的下一轮**（thread 状态延续），不传则是一次
+    全新会话。这两种都要测：`get_store_info` 是图的入口（`graph.py:34` 的
+    `add_edge(START, "get_store_info")`），**每轮都会重跑**并用 store 里的值覆盖
+    state，所以"新会话"与"同会话第二轮"都会命中缺键分支。
+    """
+    graph = build_graph(checkpointer=checkpointer or MemorySaver(), store=STORE)
     case = SimpleNamespace(params=params)
     config = {"configurable": {"thread_id": thread}}
     context = {"user_id": USER_ID}
@@ -83,10 +101,14 @@ def run(question: str, params: dict, thread: str) -> str:
         return f"!!   {type(exc).__name__}: {exc}   store 条数={n}"
 
 
-print("会话一（首轮，store 为空）")
+ck1 = MemorySaver()
+print("会话一·第一轮（store 为空）")
 print("  ", run("深圳预算3000元以下的房子，帮我推荐10套",
-               {"city": "深圳", "budget_max": 3000}, "thread-1"))
-print("会话二（同一用户，新会话）")
+               {"city": "深圳", "budget_max": 3000}, "thread-1", ck1))
+print("会话一·第二轮（**同一 thread**：验证同会话下一轮也命中）")
+print("  ", run("深圳2500元以下的房子还有哪些",
+               {"city": "深圳", "budget_max": 2500}, "thread-1", ck1))
+print("会话二（同一用户，**新会话**）")
 print("  ", run("深圳预算2000元以下的房子，帮我推荐10套",
                {"city": "深圳", "budget_max": 2000}, "thread-2"))
 print("\nstore 里的原始内容：")
