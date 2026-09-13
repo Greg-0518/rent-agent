@@ -52,7 +52,7 @@ RESULTS_DIR = ROOT / "eval" / "results"
 
 # 归因分类，顺序即报告里的展示顺序：
 # 前六类是**模型能力**失败（该改 Prompt / 该改 schema 说明），
-# 后两类**不属于模型能力问题**（该改安全层 / 该改路由），必须分开看。
+# 后三类**不属于模型能力问题**（该改安全层 / 该改路由 / 该改代码），必须分开看。
 ATTRIBUTIONS = [
     ("SQL_SYNTAX_ERROR", "SQL 语法/执行错误"),
     ("SCHEMA_MISUNDERSTOOD", "理解错表结构"),
@@ -62,6 +62,7 @@ ATTRIBUTIONS = [
     ("NO_QUERY_ATTEMPT", "该查库却没查"),
     ("ROUTED_AWAY", "被路由分走（非模型能力问题）"),
     ("GUARD_BYPASS", "安全层被绕过（非模型能力问题）"),
+    ("GRAPH_CRASH", "图执行异常（非模型能力问题，是要修的代码 bug）"),
 ]
 
 MODEL_ATTRIBUTIONS = {code for code, _ in ATTRIBUTIONS[:6]}

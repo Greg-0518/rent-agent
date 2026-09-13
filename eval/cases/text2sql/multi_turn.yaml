@@ -1,0 +1,140 @@
+# 多轮 / 跨会话用例 —— 3 条
+#
+# **为什么要有这个文件**：套件里原本 70 条**全是单轮的**，而且每条都拿全新的
+# store + 独立 user_id（`eval-<case_id>`）。后果是 `recommend.py` 的**读**方向分支
+# ——"store 里已经有这个用户的偏好"——**一次都没被走到过**。R4 的 D6 就长在那个分支里：
+# 写侧 `model_dump(exclude_none=True)` 让落库 dict 的键集合随数据而变，
+# 读侧裸下标 `prefs["budget_min"]` 于是在**下一次调用**时 KeyError。
+# 单轮用例永远测不到它——它需要"同一个用户的第二次调用"。
+#
+# 三条用例各自钉一个触发条件：
+#
+#   M-001  同会话第二轮       ← 入口节点每轮重跑，所以**不用等新会话**也会命中；
+#                              同时钉"记忆的预算被真的用上"
+#   M-002  新会话（同一用户）  ← 跨会话记忆：第二轮的预算只能来自 store
+#   M-003  同会话第三轮       ← 钉"新消息覆盖记忆"的优先级（明文约定）
+#
+# 写用例的硬约束：
+#
+#  1. **黄金行数必须 ≤ room_count(10)**（同 L1/L3）。prompt 里的 top_k 就是
+#     room_count，Agent 会照着写 LIMIT；只要 LIMIT 不真的截断，Agent 的排序自由
+#     就不会改变结果集，id_set 的比对才干净。
+#  2. **上限刻意避开"正好落在某个房源的 price 上"**。实跑里模型写的是
+#     `price < 1000`（严格小于）而不是 `<= 1000`，只要没有任何一套房源的价格正好等于
+#     上限，两种写法结果相同，用例就不会因为"模型选了哪个比较符"而随机红绿
+#     （否则它会变成一条伪装的 BOUNDARY_OFF_BY_ONE）。三条用例的上限 1000 都避开了。
+#  3. **后续轮次的 params 里刻意不写 budget_max**（只写城市/区域）。params 是给中断
+#     追问作答用的，而预算正是这几条要考的东西：写进去等于把答案递过去——记忆失效时
+#     会触发一次追问，那一问一答就把预算补齐了，用例随即失去鉴别力。
+#     实测这三条里"城市"确实靠 params 补上（问句里没有城市），而预算**没有**
+#     被补上，所以"预算来自 store"这个结论是干净的，见下面 notes。
+#
+# 关于 tier：写的是**被断言那一轮**的难度，不是"多轮"这个形状。形状轴看
+# `trace.n_turns`（0 = 单轮）。混成一个 `Multi` 档会让分档完成率里多出一个语义
+# 不同的桶，还会得出"Multi 档只有 3 条"这种没有意义的统计。
+
+- id: M-001
+  tier: L1
+  turns:
+    - question: 深圳宝安区1000元以下的房子，帮我推荐10套
+      params: {city: 深圳, district: 宝安区, budget_max: 1000}
+      room_count: 10
+    - question: 那一居室的呢，帮我推荐10套
+      params: {city: 深圳, district: 宝安区}
+      room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '宝安区' AND bedroom = 1 AND price <= 1000
+    ORDER BY price ASC LIMIT 10
+  notes: |
+    宝安区一居室共 3 套（550 / 720 / 1380），上限 1000 把第三套挡在外面
+    → 黄金 **2 套（id 1/10）**。
+
+    第一轮的落库形状正是 D6 的确切形状：只说了上限、没说下限，
+    `model_dump(exclude_none=True)` 于是写出一个**没有 budget_min 键**的 dict
+    （实测见 eval/results/probe_cross_session-before.txt）。第二轮的入口节点从 store
+    读回的正是它——修前在这里 KeyError，**整个会话死在第一个节点上**。
+    修前跑这条必 FAIL（归因 GRAPH_CRASH）：见 eval/results/multi_turn-before-fix.txt。
+
+    第二轮同时钉"记忆真的生效"：问句里只有居室条件，城市/区域靠中断追问补
+    （params 里有），**预算只能来自 store**。实跑的第二轮提取结果是
+    `{'budget_max': 1000.0, 'room_type': '一居室', 'room_count': 10}`——
+    注意它**没有** city/district（那两个是中断后的第二次提取补上的），
+    budget_max 却在了，只可能来自 store 里那条历史偏好。
+    记忆断了 → 少一个价格条件 → 宝安区一居室 = 3 套（**超集**）→ FAIL。
+
+- id: M-002
+  tier: L1
+  turns:
+    - question: 深圳光明区1000元以下的房子，帮我推荐10套
+      params: {city: 深圳, district: 光明区, budget_max: 1000}
+      room_count: 10
+    - question: 光明区一居室的房子，帮我推荐10套
+      params: {city: 深圳, district: 光明区}
+      new_session: true
+      room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '光明区' AND bedroom = 1 AND price <= 1000
+    ORDER BY price ASC LIMIT 10
+  notes: |
+    第一轮在**会话一**；第二轮 `new_session: true` 开**新会话**（新 thread_id，
+    同一 user_id → store 延续）。这是 D6 的第二个触发条件，也是"跨会话记忆"的现场。
+
+    光明区一居室共 3 套（820 / 1050 / 1080），上限 1000 只留第一套
+    → 黄金 **1 套（id 4）**。记忆断了 → 没上限 → 3 套（**超集**）→ FAIL。
+
+    上限为什么是 1000 而不是恰好卡在第二套上的 1050（那会让黄金变成 2 套）：
+    1050 是 id 18 的真实价格，上限落在它上面时 `<= 1050` 与 `< 1050` 结果不同，
+    用例会开始依赖模型写哪个比较符（见文件头的约束 2）。宁可黄金少一行，
+    不要一条会随机红绿的用例。
+
+    实跑的**第二轮**（新会话那一轮）提取结果是
+    `{'district': '光明区', 'budget_max': 1000.0, 'room_type': '一居室', 'room_count': 10}`
+    —— 问句里没有任何预算数字，1000 只能是从**上一个会话**写进 store 的偏好里读回来的。
+
+- id: M-003
+  tier: L1
+  turns:
+    - question: 深圳南山区2200元以下的房子，帮我推荐10套
+      params: {city: 深圳, district: 南山区, budget_max: 2200}
+      room_count: 10
+    - question: 那只要一居室的，推荐10套
+      params: {city: 深圳, district: 南山区}
+      room_count: 10
+    - question: 那1000元以下的呢，推荐10套
+      params: {city: 深圳, district: 南山区}
+      room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '南山区' AND bedroom = 1 AND price <= 1000
+    ORDER BY price ASC LIMIT 10
+  notes: |
+    三轮。**只有第三轮进断言器**，前两轮的作用是把它要考的那个状态搭出来
+    （这正是多轮用例与前两轮各自单独存在时的区别）。
+
+    第三轮钉的是**"冲突以最新用户消息为主"**这条明文约定：store 里记着 2200
+    （第一轮写的），而消息里说的是 1000。两种走法结果差得很远——
+
+    | 取哪个预算 | 南山区结果 |
+    |---|---|
+    | 消息里的 1000（**正确**） | 1 套（id 9） |
+    | 记忆里的 2200 | 5 套（id 9/11/20/29/31）→ FAIL |
+    | 一个都没取到 | 7 套（全区）→ FAIL |
+
+    实跑第三轮的提取结果是 `{'budget_max': 1000.0, 'room_count': 10}`——
+    取的是消息里的值，记忆里的 2200 被覆盖，约定成立。
+
+    两处**读日志时别被绕住**的地方：
+
+    1. 第三轮实际写出的 SQL 是 `... AND price <= 1000`，**没有 bedroom = 1**——
+       产品不会把上一轮的居室条件带下来（每轮只从"最新消息 + 记住的预算"重新提取）。
+       只是南山区 ≤1000 本就只有 id 9 这一套，带不带居室条件结果相同，
+       所以黄金对两种读法都成立、都能过。**这条钉的不是"居室条件延续"**，
+       别把它读成那个意思（真要看延续，得另挑一组数据）。
+    2. 第三轮走完后 store 里仍是 2200，不是 1000：写回逻辑只在
+       `cur_max > store_max` 时更新（预算只记"见过的最宽的那个"）。
+       不影响本用例判定（只看最后一轮的 SQL），但会让人误以为第三轮没写进去。

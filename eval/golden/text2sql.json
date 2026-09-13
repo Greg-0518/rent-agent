@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-09-13T22:23:36",
+  "generated_at": "2026-09-13T22:32:46",
   "module": "text2sql",
-  "case_count": 89,
+  "case_count": 92,
   "db": {
     "database": "192.168.144.128:3306/house_prd",
     "house_rows": 50
@@ -1949,6 +1949,58 @@
     "L5-010": {
       "mode": "refusal",
       "gold_sql": ""
+    },
+    "M-001": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '宝安区' AND bedroom = 1 AND price <= 1000 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          1.0,
+          550.0
+        ],
+        [
+          10.0,
+          720.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 1.0
+    },
+    "M-002": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '光明区' AND bedroom = 1 AND price <= 1000 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          4.0,
+          820.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 4.0
+    },
+    "M-003": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '南山区' AND bedroom = 1 AND price <= 1000 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          9.0,
+          950.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 9.0
     }
   }
 }

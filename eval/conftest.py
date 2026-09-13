@@ -28,7 +28,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from eval.asserters.rule import FAIL, UNREACHABLE, UNVERIFIABLE, assert_case  # noqa: E402
-from eval.runner.agent_runner import build_graph, run_case  # noqa: E402
+from eval.runner.agent_runner import build_graph, run_case, run_multi_turn_case  # noqa: E402
 from eval.runner.selection import SMOKE_IDS, select_cases  # noqa: E402
 
 RESULTS_DIR = ROOT / "eval" / "results"
@@ -134,12 +134,19 @@ def run_one_case(request):
 
     def _run(case, golden_entry):
         # 每条用例一份独立的 checkpointer / store：用例之间不能互相污染
-        # （store 里存着 user_preferences，共用会让第 2 条用例读到第 1 条的预算）
+        # （store 里存着 user_preferences，共用会让第 2 条用例读到第 1 条的预算）。
+        #
+        # 多轮用例（`case.is_multi_turn`）不用这里建的这个图：它的隔离粒度是
+        # **用例，不是轮**——整条用例共用一份 store + 一份 checkpointer，新会话
+        # 只换 thread_id。所以它自己建图（见 agent_runner.run_multi_turn_case）。
         graph = build_graph()
         buf = StringIO()
         started = time.time()
         with redirect_stdout(buf):
-            trace = run_case(case, graph=graph)
+            if case.is_multi_turn:
+                trace = run_multi_turn_case(case)
+            else:
+                trace = run_case(case, graph=graph)
         elapsed = time.time() - started
 
         result = assert_case(case, trace, golden_entry)
@@ -152,6 +159,9 @@ def run_one_case(request):
             "mode": case.assertion.mode,
             "question": case.question,
             "room_count": case.room_count,
+            # 0 = 单轮用例。报告里靠它区分"多轮的失败"与"单轮的失败"——
+            # 两者的排查方式完全不同（多轮先看 turn_sql_counts 与 turn_errors）。
+            "n_turns": trace.n_turns,
             "seconds": round(elapsed, 1),
             "latency_ms": round(trace.latency_ms, 1),
             "tokens_in": trace.tokens_in,
