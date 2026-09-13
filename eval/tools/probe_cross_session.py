@@ -5,29 +5,38 @@
 现有 89 条用例**全是单轮的**：`run_case` 只发一条 HumanMessage，之后的中断-恢复
 仍在同一轮里。而每条用例又都拿**全新的 store + 独立的 user_id**（`eval-<case_id>`），
 于是"store 里已经有这个用户的偏好"这个状态**在评测里压根构造不出来**——
-写方向的代码每轮都跑（`recommend.py:186` 的 `store.put`），读方向的分支一次都没进过。
+写方向的代码每轮都跑（`recommend.py` 的 `store.put`），读方向的分支一次都没进过。
 
-这个探针就是为了把那个状态造出来。当前结果：**第二个会话直接 KeyError 崩掉**。
+这个探针就是为了把那个状态造出来。
+
+═══ 它的历史：先当复现脚本，现在是回归检查 ═══
+
+**修之前**（R4 的 D6，挂了很久没人发现）：
 
     会话一（store 空） → OK，写入 {'budget_max': 3000.0}
     会话二（同一用户） → KeyError: 'budget_min'
 
-真因在 `src/agent/node/recommend.py`：
+真因是写侧与读侧对「键集合」的假设不一致：
 
-    189 行   prefs.model_dump(exclude_none=True)   ← 只设了 budget_max 时，
-                                                     落库的 dict 里**没有 budget_min 这个键**
-    196 行   store_min = prefs["budget_min"]       ← 直接下标取值，不是 .get()
+    写  `prefs.model_dump(exclude_none=True)`  ← 只设了 budget_max 时，
+                                                落库的 dict 里**没有 budget_min 这个键**
+    读  `store_min = prefs["budget_min"]`      ← 直接下标取值，不是 .get()
 
-所以只要用户第一次只说了上限、第二次再来，"有持久化信息"这条分支一进去就炸。
-这两行都在 HEAD 里（不是工作区未提交的改动），是**既有缺陷**。
+**为什么只在第二个会话炸**：同一会话内新用户分支把不带 `exclude_none` 的完整
+键集合写进了 state，只有新会话的 `get_store_info`（图的**第一个节点**）才重新
+从 store 读。所以不是"某条链路答得不好"，是**整个会话在入口就死**。
 
-修法（任选，改前先想清楚语义）：
-  - 读侧用 `prefs.get("budget_min")`，缺键当 None —— 最小改动，与 `UserPreferences`
-    两个字段都是 `Optional` 的定义一致
-  - 或写侧去掉 `exclude_none=True`，让 None 也落库
-    （代价：store 里开始存 None，"没设过"和"设过然后是 None"就分不开了）
+**修法（已定，2026-09-13）**：读侧统一走 `src/agent/common/store.py:read_preferences`，
+缺键当 None。**没有**改写侧的 `exclude_none=True` —— 读侧正规化能同时容下
+**修之前就已落库的旧数据**，写侧改法只管未来写入、历史行照样崩。
 
-fix 之后这个脚本就是它的回归检查：两个会话都该 OK，且会话二能读到会话一写的偏好。
+**当前结果**（`eval/results/probe_cross_session-fixed.txt`）：
+
+    会话一（store 空） → OK，写入 {'budget_max': 3000.0}
+    会话二（同一用户） → OK，读到会话一的 budget_max=3000，store 条数=1
+
+`read_preferences` 的键集合不变式由 `tests/unit_tests/test_store_preferences.py`
+零成本守着（不依赖库、不调模型）；这个脚本负责端到端那一半。
 """
 import sys
 from pathlib import Path

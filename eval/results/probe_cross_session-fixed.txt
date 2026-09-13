@@ -1,0 +1,48 @@
+﻿.\venv\Scripts\python.exe : D:\kindsOfProject\rent-agent\venv\Lib\site-packages\langgraph\checkpoint\serde\encrypted.py
+:5: LangChainPendingDeprecationWarning: The default value of `allowed_objects` will change in a future version. Pass an
+ explicit value (e.g., allowed_objects='messages' or allowed_objects='core') to suppress this warning.
+At line:1 char:333
++ ... NG="utf-8"; .\venv\Scripts\python.exe eval\tools\probe_cross_session. ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\kindsOfProje...s this warning.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+D:\kindsOfProject\rent-agent\venv\Lib\site-packages\jieba\_compat.py:18: UserWarning: pkg_resources is deprecated as an
+ API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as e
+arly as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+rent_agent
+sql_db_query
+sql_db_schema
+sql_db_list_tables
+sql_db_query_checker
+会话一（首轮，store 为空）
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳预算3000元以下的房子，帮我推荐10套
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'budget_max': 3000.0, 'room_count': 10}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳预算3000元以下的房子，帮我推荐10套
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'budget_max': 3000.0, 'room_count': 10}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=10
+   OK   user_preferences={'budget_min': None, 'budget_max': 3000.0, 'reserved_info': None}  store 条数=1
+会话二（同一用户，新会话）
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳预算2000元以下的房子，帮我推荐10套
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'budget_max': 2000.0, 'room_count': 10}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳预算2000元以下的房子，帮我推荐10套
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'budget_max': 2000.0, 'room_count': 10}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-2000.0, 房间数=10
+   OK   user_preferences={'budget_max': 3000.0}  store 条数=1
+
+store 里的原始内容：
+  key= 0abca2ba-a7fd-48ae-9466-1ac2051ed1e9  value= {'budget_max': 3000.0}
