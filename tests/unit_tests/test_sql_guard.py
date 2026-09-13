@@ -189,6 +189,99 @@ def test_max_rows_env_override(monkeypatch):
     assert v.sql.endswith("LIMIT 5")
 
 
+# ---------- 掩码：字面量里的东西不能影响判定（这一组全是实跑出来的误判/漏判） ----------
+
+def test_semicolon_inside_string_literal_is_not_multi_statement():
+    """回归：`LIKE '%;%'` 里的分号曾被当成多语句，导致"描述里带分号就查不了"。
+
+    分号判定现在只看**字面量之外**的分号。
+    """
+    v = validate_sql("SELECT id FROM house WHERE description LIKE '%;%'")
+    assert v.allowed, v.reason
+
+
+def test_limit_inside_string_literal_is_not_rewritten():
+    """回归：字面量里的 LIMIT 曾被真的改写（`'%LIMIT 1000%'` → `'%LIMIT 50%'`），
+    等于篡改 SQL 语义。现在只在字面量之外注入/收紧。
+    """
+    v = validate_sql("SELECT id FROM house WHERE description LIKE '%LIMIT 1000%'")
+    assert v.allowed
+    assert "'%LIMIT 1000%'" in v.sql          # 字面量原样保留
+    assert v.sql.endswith("LIMIT 50")          # 顶层这才注入
+
+
+def test_write_keyword_inside_string_literal_is_not_flagged():
+    """回归：`LIKE '%DROP%'` 曾被判成写操作。真写操作仍拦（见下面的用例）。"""
+    assert validate_sql("SELECT id FROM house WHERE description LIKE '%DROP%'").allowed
+    assert not validate_sql("DROP TABLE house").allowed
+
+
+def test_subquery_limit_left_alone_top_level_injected():
+    """回归：子查询的 LIMIT 曾被当顶层收紧（`LIMIT 999` → `LIMIT 50`）。
+
+    那是子查询的行数上限，与"最多返回多少行给用户"不是一回事。
+    """
+    v = validate_sql("SELECT id, price FROM house WHERE id IN (SELECT id FROM house LIMIT 999)")
+    assert v.allowed
+    assert "LIMIT 999" in v.sql                       # 子查询不动
+    assert v.sql.endswith("LIMIT 50")                 # 顶层补上
+
+
+def test_top_level_oversized_limit_still_clamped_with_subquery():
+    v = validate_sql("SELECT id FROM house WHERE id IN (SELECT id FROM house LIMIT 999) LIMIT 5000")
+    assert v.allowed
+    assert "LIMIT 999" in v.sql
+    assert v.sql.endswith("LIMIT 50")
+
+
+def test_cte_with_literal_semicolon_ok():
+    v = validate_sql("WITH t AS (SELECT id FROM house WHERE description LIKE '%;%') SELECT * FROM t")
+    assert v.allowed, v.reason
+
+
+def test_escaped_quote_inside_literal():
+    """`''` 是 SQL 里的转义单引号，不能被当成"字面量结束"（否则后面的 `;` 会被误判）。"""
+    v = validate_sql("SELECT id FROM house WHERE name = 'it''s; fine'")
+    assert v.allowed, v.reason
+
+
+def test_limit_after_trailing_comment_still_injected():
+    """`SELECT ...; -- 注释`：注入的 LIMIT 必须落在注释**之前**。
+
+    直接追加会变成 `-- 注释 LIMIT 50`——LIMIT 被注释吃掉，等于没加。
+    尾部注释与分号都会被去掉（与旧版一致），所以断言的是完整结果串。
+    """
+    v = validate_sql("SELECT * FROM house; -- 查一下")
+    assert v.allowed
+    assert v.sql == "SELECT * FROM house LIMIT 50"
+
+
+def test_backtick_table_name_cannot_bypass_deny_list():
+    """反引号是**标识符**，不是字面量——掩码不能吃掉它的内容。
+
+    这是实现掩码时真的踩出来的绕过：`FROM \\`users\\`` 一度变成放行。
+    """
+    v = validate_sql("SELECT * FROM `users`")
+    assert not v.allowed
+    assert v.rule == "deny_table:users"
+
+
+def test_backticked_keyword_name_still_rejected_fails_safe():
+    """已知的**误拒**，方向是安全的：列名正好叫 `update` 时仍会命中
+    `deny_keyword:UPDATE`。本库没有这种列名，故不做区分
+    （区分就得掩码反引号内容，那会打开上面那条绕过）。"""
+    v = validate_sql("SELECT `update` FROM house")
+    assert not v.allowed
+    assert v.rule == "deny_keyword:UPDATE"
+
+
+def test_hash_is_not_treated_as_comment():
+    """`#` 不再当行注释：它会 fail-open（`\\`a#b\\`` 里的 `#` 能把后面整行掩掉，
+    包括 `FROM users`）。当普通字符处理，最坏是误拒。"""
+    v = validate_sql("SELECT id FROM house WHERE description LIKE '%#%'")
+    assert v.allowed, v.reason
+
+
 # ---------- 拒绝消息：评测侧靠标记判定拒绝分支 ----------
 
 def test_rejection_message_carries_marker():
