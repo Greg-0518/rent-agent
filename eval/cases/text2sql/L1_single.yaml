@@ -1,0 +1,260 @@
+# L1 · 单表条件（WHERE / ORDER BY / LIMIT）—— 20 条，断言 id_set
+#
+# 写用例的两条硬约束（都源自 house 表的真实性质）：
+#
+#  1. **price 的 50 个值互不相同** → `ORDER BY price` 的 top-N 完全确定，
+#     不存在"并列导致取谁都对"的歧义，所以排名类用例可以严格比对。
+#  2. **过滤类用例的 room_count 必须 ≥ 黄金结果行数** → prompt 里的 top_k 就是
+#     room_count，Agent 会照着写 LIMIT。只要 LIMIT 不真的截断，Agent 的排序自由
+#     （prompt 只说"可以按相关列排序"，没规定排哪列）就不会改变结果集，
+#     id_set 的比对才是干净的。凡是结果集可能超过 10 行的过滤条件都不放在这一档。
+#
+# params 的作用是给中断追问生成一个与问题**自洽**的答复（见 agent_runner 的
+# _answer_for_interrupt）。注意 budget_max=3000 是本表的真实最大值，等价于"不加价格
+# 条件"，用在问题没提预算的用例上不会影响黄金结果集。
+
+- id: L1-001
+  tier: L1
+  holdout: true
+  question: 深圳宝安区3000元以下的一居室，帮我推荐10套
+  params: {city: 深圳, district: 宝安区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '宝安区' AND bedroom = 1 AND price <= 3000
+    ORDER BY price ASC LIMIT 10
+  notes: 基础三条件；宝安区一居室共 3 套（id 1/10/23）
+
+- id: L1-002
+  tier: L1
+  question: 深圳南山区2000元以内的两居室，推荐10套
+  params: {city: 深圳, district: 南山区, budget_max: 2000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '南山区' AND bedroom = 2 AND price <= 2000
+    ORDER BY price ASC LIMIT 10
+  notes: 两居室语义映射（bedroom=2）；共 2 套（id 20/29）
+
+- id: L1-003
+  tier: L1
+  question: 深圳福田区的三居室，推荐10套
+  params: {city: 深圳, district: 福田区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '福田区' AND bedroom = 3
+    ORDER BY price ASC LIMIT 10
+  notes: 三居室=bedroom=3；共 2 套（id 41/50）
+
+- id: L1-004
+  tier: L1
+  question: 深圳龙岗区1500元以下的房子，推荐10套
+  params: {city: 深圳, district: 龙岗区, budget_max: 1500}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '龙岗区' AND price <= 1500
+    ORDER BY price ASC LIMIT 10
+  notes: 单区+价格上限；共 3 套（id 2/15/24）。区均价 1522 > 1500，边界安全
+
+- id: L1-005
+  tier: L1
+  question: 深圳盐田区朝南的房子，推荐10套
+  params: {city: 深圳, district: 盐田区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '盐田区' AND orientation = '朝南'
+    ORDER BY price ASC LIMIT 10
+  notes: 朝向映射；盐田区共 5 套，朝南 3 套（id 6/17/26）
+
+- id: L1-006
+  tier: L1
+  question: 深圳南山区朝南的房源有哪些，推荐10套
+  params: {city: 深圳, district: 南山区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '南山区' AND orientation = '朝南'
+    ORDER BY price ASC LIMIT 10
+  notes: 南山区朝南 5 套（id 9/11/20/40/49），结果集 5 < 10 不截断
+
+- id: L1-007
+  tier: L1
+  question: 深圳光明区2000元以下的房子，推荐10套
+  params: {city: 深圳, district: 光明区, budget_max: 2000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '光明区' AND price <= 2000
+    ORDER BY price ASC LIMIT 10
+  notes: 光明区 5 套中 3 套 ≤2000（id 4/18/27）
+
+- id: L1-008
+  tier: L1
+  question: 深圳坪山区的两居室，推荐10套
+  params: {city: 深圳, district: 坪山区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '坪山区' AND bedroom = 2
+    ORDER BY price ASC LIMIT 10
+  notes: 坪山区两居 3 套（id 5/39/48）
+
+- id: L1-009
+  tier: L1
+  holdout: true
+  question: 深圳龙华区朝南的房子，推荐10套
+  params: {city: 深圳, district: 龙华区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '龙华区' AND orientation = '朝南'
+    ORDER BY price ASC LIMIT 10
+  notes: 龙华区 5 套中朝南仅 2 套（id 36/45），是"朝南房稀缺"的样本
+
+- id: L1-010
+  tier: L1
+  question: 深圳罗湖区2000元以下的房子，推荐10套
+  params: {city: 深圳, district: 罗湖区, budget_max: 2000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '罗湖区' AND price <= 2000
+    ORDER BY price ASC LIMIT 10
+  notes: 罗湖区 5 套中 3 套 ≤2000（id 7/13/22）
+
+- id: L1-011
+  tier: L1
+  question: 深圳福田区2500元以上的房源，推荐10套
+  params: {city: 深圳, district: 福田区, budget_max: 3000, budget_min: 2500}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '福田区' AND price >= 2500
+    ORDER BY price ASC LIMIT 10
+  notes: 价格下限（方向易写反）；共 3 套（id 32/41/50）
+
+- id: L1-012
+  tier: L1
+  question: 深圳南山区2500元以上的房源，推荐10套
+  params: {city: 深圳, district: 南山区, budget_max: 3000, budget_min: 2500}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '南山区' AND price >= 2500
+    ORDER BY price ASC LIMIT 10
+  notes: 共 2 套（id 40/49）
+
+- id: L1-013
+  tier: L1
+  question: 深圳宝安区的两居室，推荐10套
+  params: {city: 深圳, district: 宝安区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '宝安区' AND bedroom = 2
+    ORDER BY price ASC LIMIT 10
+  notes: 共 2 套（id 14/34）
+
+- id: L1-014
+  tier: L1
+  question: 深圳龙岗区的两居室，推荐10套
+  params: {city: 深圳, district: 龙岗区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '龙岗区' AND bedroom = 2
+    ORDER BY price ASC LIMIT 10
+  notes: 共 3 套（id 15/35/44）
+
+- id: L1-015
+  tier: L1
+  holdout: true
+  question: 深圳盐田区朝南的两居室，推荐10套
+  params: {city: 深圳, district: 盐田区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '盐田区' AND bedroom = 2 AND orientation = '朝南'
+    ORDER BY price ASC LIMIT 10
+  notes: 四条件叠加；共 2 套（id 17/26）
+
+- id: L1-016
+  tier: L1
+  question: 深圳坪山区的一居室，推荐10套
+  params: {city: 深圳, district: 坪山区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '坪山区' AND bedroom = 1
+    ORDER BY price ASC LIMIT 10
+  notes: 与 L1-008 同区不同居室，防止"区名对上就算对"；共 2 套（id 19/28）
+
+# ---- 排名类：排序即答案，严格比对（price 无并列，结果确定） ----
+
+- id: L1-017
+  tier: L1
+  question: 深圳最便宜的3套房子，帮我推荐
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 3
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳'
+    ORDER BY price ASC LIMIT 3
+  notes: 全局 top-3（id 1/7/2 = 550/600/680）；考 ORDER BY 方向与 LIMIT
+
+- id: L1-018
+  tier: L1
+  holdout: true
+  question: 深圳最贵的3套房子，帮我推荐
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 3
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳'
+    ORDER BY price DESC LIMIT 3
+  notes: 全局 top-3 降序（id 50/41/46 = 3000/2950/2900）
+
+- id: L1-019
+  tier: L1
+  question: 深圳南山区最便宜的2套房子
+  params: {city: 深圳, district: 南山区, budget_max: 3000}
+  room_count: 2
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '南山区'
+    ORDER BY price ASC LIMIT 2
+  notes: 区内 top-2（id 9/11 = 950/1200）
+
+- id: L1-020
+  tier: L1
+  question: 深圳福田区最贵的2套房子
+  params: {city: 深圳, district: 福田区, budget_max: 3000}
+  room_count: 2
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '福田区'
+    ORDER BY price DESC LIMIT 2
+  notes: 区内 top-2 降序（id 50/41 = 3000/2950）

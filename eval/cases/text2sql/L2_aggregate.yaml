@@ -1,0 +1,130 @@
+# L2 · 聚合统计（GROUP BY / HAVING / COUNT / AVG / MIN / MAX）—— 12 条
+#
+# 断言用 scalar / count，**期望值全部由 gold_sql 执行后产生**（eval/golden/text2sql.json），
+# 不在 yaml 里手抄——手抄的期望值和黄金 SQL 两处对不上时无法复核。
+#
+# 黄金 SQL 的约定：**要断言的值必须放在结果集第一行的第一列**。
+# 所以"哪个区最贵"写成 `SELECT district, AVG(price) ... LIMIT 1` 而不是先查聚合值。
+#
+# 刻意避开 AVG 做 scalar：平均值带小数，Agent 的 ROUND 位数不可控，
+# 会造成"答案对但格式不同"的假失败。这里只让 MIN/MAX/COUNT/整值 AVG 承担 scalar。
+
+- id: L2-001
+  tier: L2
+  question: 深圳哪个区的平均租金最贵
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: scalar}
+  gold_sql: >
+    SELECT district, ROUND(AVG(price), 2) AS avg_price FROM house
+    WHERE city = '深圳'
+    GROUP BY district ORDER BY AVG(price) DESC LIMIT 1
+  notes: 福田区 avg=2090 最高（盐田 2016 次之，差 74 元，区分度足够）
+
+- id: L2-002
+  tier: L2
+  holdout: true
+  question: 深圳哪个区的平均租金最便宜
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: scalar}
+  gold_sql: >
+    SELECT district, ROUND(AVG(price), 2) AS avg_price FROM house
+    WHERE city = '深圳'
+    GROUP BY district ORDER BY AVG(price) ASC LIMIT 1
+  notes: 光明区 avg=1456 最低；宝安 1483.33 紧随，考"是否真的按聚合值排序"
+
+- id: L2-003
+  tier: L2
+  question: 深圳福田区的平均租金是多少
+  params: {city: 深圳, district: 福田区, budget_max: 3000}
+  assert: {mode: scalar}
+  gold_sql: >
+    SELECT ROUND(AVG(price), 2) FROM house
+    WHERE city = '深圳' AND district = '福田区'
+  notes: 14630/7 = 2090.00 整值，不受 ROUND 位数影响
+
+- id: L2-004
+  tier: L2
+  question: 深圳最贵的那套房子月租多少钱
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: scalar}
+  gold_sql: >
+    SELECT price FROM house WHERE city = '深圳' ORDER BY price DESC LIMIT 1
+  notes: 3000（id 50）；与 L2-005 配对考 ORDER BY 方向
+
+- id: L2-005
+  tier: L2
+  question: 深圳最便宜的那套房子月租多少钱
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: scalar}
+  gold_sql: >
+    SELECT price FROM house WHERE city = '深圳' ORDER BY price ASC LIMIT 1
+  notes: 550（id 1）
+
+- id: L2-006
+  tier: L2
+  question: 深圳的两居室最低月租是多少
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: scalar}
+  gold_sql: >
+    SELECT MIN(price) FROM house WHERE city = '深圳' AND bedroom = 2
+  notes: 900（id 5）；MIN 聚合，值精确
+
+- id: L2-007
+  tier: L2
+  question: 深圳宝安区最贵的房子月租多少钱
+  params: {city: 深圳, district: 宝安区, budget_max: 3000}
+  assert: {mode: scalar}
+  gold_sql: >
+    SELECT MAX(price) FROM house WHERE city = '深圳' AND district = '宝安区'
+  notes: 2450（id 43）；区级 MAX
+
+# ---- count 档：聚合写法（返回 1 行且值为 N）与明细写法（返回 N 行）都算对 ----
+
+- id: L2-008
+  tier: L2
+  question: 深圳现在一共有多少套一居室
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: count, count: 18}
+  gold_sql: >
+    SELECT COUNT(*) FROM house WHERE city = '深圳' AND bedroom = 1
+  notes: 18 套；bedroom=1 而非 room_type 文本
+
+- id: L2-009
+  tier: L2
+  question: 深圳福田区一共有多少套房源
+  params: {city: 深圳, district: 福田区, budget_max: 3000}
+  assert: {mode: count, count: 7}
+  gold_sql: >
+    SELECT COUNT(*) FROM house WHERE city = '深圳' AND district = '福田区'
+  notes: 7 套
+
+- id: L2-010
+  tier: L2
+  holdout: true
+  question: 深圳有多少套房源是带电梯的
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: count, count: 35}
+  gold_sql: >
+    SELECT COUNT(*) FROM house WHERE city = '深圳' AND description LIKE '%有电梯%'
+  notes: |
+    35 套。**这是本档最容易错的一条**：另有 15 套描述是"无电梯"，
+    若写成 LIKE '%电梯%' 会得到 50——考的是"有电梯"这个正向语义，
+    不是"提到电梯"。因此黄金条件必须是 '%有电梯%'。
+
+- id: L2-011
+  tier: L2
+  question: 深圳有多少套三居室
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: count, count: 9}
+  gold_sql: >
+    SELECT COUNT(*) FROM house WHERE city = '深圳' AND bedroom = 3
+  notes: 9 套
+
+- id: L2-012
+  tier: L2
+  question: 深圳朝东的房源有多少套
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: count, count: 12}
+  gold_sql: >
+    SELECT COUNT(*) FROM house WHERE city = '深圳' AND orientation = '朝东'
+  notes: 12 套；朝东/朝南(22)/朝北(9)/朝西(7)

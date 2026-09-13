@@ -1,0 +1,250 @@
+﻿.\venv\Scripts\python.exe : D:\kindsOfProject\rent-agent\venv\Lib\site-packages\langgraph\checkpoint\serde\encrypted.py
+:5: LangChainPendingDeprecationWarning: The default value of `allowed_objects` will change in a future version. Pass an
+ explicit value (e.g., allowed_objects='messages' or allowed_objects='core') to suppress this warning.
+At line:1 char:302
++ ... tch {} } }; .\venv\Scripts\python.exe eval/tools/probe_route.py > eva ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\kindsOfProje...s this warning.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+D:\kindsOfProject\rent-agent\venv\Lib\site-packages\jieba\_compat.py:18: UserWarning: pkg_resources is deprecated as an
+ API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as e
+arly as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+rent_agent
+sql_db_query
+sql_db_schema
+sql_db_list_tables
+sql_db_query_checker
+强制 user_intent='recommend_house'（落点 recommended_graph）
+
+用例       强制路由后         SQL数  说明
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳哪个区的平均租金最贵
+[collect_user_info] 本轮提取结果: {'city': '深圳'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳哪个区的平均租金最贵
+[collect_user_info] 本轮提取结果: {'city': '深圳'}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=None
+L2-001   pass             1  期望值 '福田区' 出现在结果集中
+          SQL: SELECT district, AVG(price) AS avg_price FROM house WHERE city = '深圳' GROUP BY district ORDER BY avg_price DESC LIMIT 5
+          答: **深圳平均租金最贵的区是：福田区**，平均租金约 **2090 元/月**。
+
+排名前五的区如下：
+
+| 排名 | 区域 | 平均租金（元/月） |
+|------|------|------------------|
+| 1 | 福田区 | 2090 |
+| 2 | 盐田区 | 2016 |
+|
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳福田区的平均租金是多少
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'district': '福田区'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳福田区的平均租金是多少
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'district': '福田区'}
+已收集⽤⼾信息: 城市=深圳, 区域=福田区, 预算=None-3000.0, 房间数=None
+[sql_guard] 强制注入/收紧 LIMIT → SELECT ROUND(AVG(price), 2) AS avg_price, COUNT(*) AS cnt FROM house WHERE city = '深圳' AND district = '福田区' LIMIT 50
+L2-003   pass             1  期望值 2090.0 出现在结果集中
+          SQL: SELECT ROUND(AVG(price), 2) AS avg_price, COUNT(*) AS cnt FROM house WHERE city = '深圳' AND district = '福田区'
+          答: **深圳福田区的平均租金约为 2090.00 元/月**（基于该区 7 条房源记录计算得出）。
+
+补充说明：您提到的预算上限为 3000 元/月，福田区的平均租金低于该预算，说明在该区仍有较多可选的房源。如需我进一步推荐福田区 3000 元以内的具体房源，请告诉我。
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳最贵的那套房子月租多少钱
+[collect_user_info] 本轮提取结果: {'city': '深圳'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳最贵的那套房子月租多少钱
+[collect_user_info] 本轮提取结果: {'city': '深圳'}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=None
+L2-004   pass             1  期望值 3000.0 出现在结果集中
+          SQL: SELECT name, district, price, bedroom, livingroom, orientation, floor, description FROM house WHERE city = '深圳' ORDER BY price DESC LIMIT 1
+          答: 深圳最贵的那套房源是**平安金融中心寓**（福田区），月租 **3000 元/月**。
+
+- 户型：3室2厅
+- 朝向：朝东
+- 楼层：45楼
+- 描述：有电梯，平安金融中心旁，高端社区
+
+（注：该价格正好落在您 3000 元/月的预算上限内。）
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳最便宜的那套房子月租多少钱
+[collect_user_info] 本轮提取结果: {'city': '深圳'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳最便宜的那套房子月租多少钱
+[collect_user_info] 本轮提取结果: {'city': '深圳'}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=None
+L2-005   pass             1  期望值 550.0 出现在结果集中
+          SQL: SELECT name, district, price, bedroom, livingroom, orientation, floor, description FROM house WHERE city = '深圳' ORDER BY price ASC LIMIT 5
+          答: 深圳最便宜的那套房子是**「温馨单间」**，月租 **550 元/月**。
+
+- 位置：宝安区
+- 户型：1室0厅
+- 朝向：朝南
+- 楼层：3楼
+- 描述：有电梯，近地铁1号线，简单装修
+
+以下是深圳月租最低的 5 套房源供参考：
+
+| 房源名称 | 区域 | 月租(元) | 户型 | 朝向 | 
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳的两居室最低月租是多少
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'room_type': '两居室'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳的两居室最低月租是多少
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'room_type': '两居室'}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=None
+[sql_guard] 强制注入/收紧 LIMIT → SELECT MIN(price) AS min_price FROM house WHERE city = '深圳' AND bedroom = 2 LIMIT 50
+L2-006   pass             1  期望值 900.0 出现在结果集中
+          SQL: SELECT MIN(price) AS min_price FROM house WHERE city = '深圳' AND bedroom = 2
+          答: 深圳两居室的最低月租是 **900 元/月**。
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳宝安区最贵的房子月租多少钱
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'district': '宝安区'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳宝安区最贵的房子月租多少钱
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'district': '宝安区'}
+已收集⽤⼾信息: 城市=深圳, 区域=宝安区, 预算=None-3000.0, 房间数=None
+L2-007   pass             1  期望值 2450.0 出现在结果集中
+          SQL: SELECT name, price, bedroom, livingroom, orientation, floor, description FROM house WHERE city = '深圳' AND district = '宝安区' ORDER BY price DESC LIMIT 5
+          答: 根据查询结果，深圳宝安区目前最贵的房源月租为 **2450 元/月**。
+
+以下是宝安区租金最高的 5 套房源：
+
+| 排名 | 房源名称 | 月租（元） | 户型 | 朝向 | 楼层 | 描述 |
+|------|----------|-----------|------|------|-----
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳现在一共有多少套一居室
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'room_type': '一居室'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳现在一共有多少套一居室
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'room_type': '一居室'}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=None
+[sql_guard] 强制注入/收紧 LIMIT → SELECT COUNT(*) AS total FROM house WHERE city = '深圳' AND bedroom = 1 LIMIT 50
+L2-008   pass             1  聚合值符合预期（18）
+          SQL: SELECT COUNT(*) AS total FROM house WHERE city = '深圳' AND bedroom = 1
+          答: 深圳目前一共有 **18 套**一居室（卧室数量为 1 的房源）。
+
+补充说明：您提到的预算上限 3000 元/月，若按此条件筛选，一居室数量会有所不同。如需查看符合预算的具体房源推荐，请告诉我。
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳福田区一共有多少套房源
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'district': '福田区'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳福田区一共有多少套房源
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'district': '福田区'}
+已收集⽤⼾信息: 城市=深圳, 区域=福田区, 预算=None-3000.0, 房间数=None
+[sql_guard] 强制注入/收紧 LIMIT → SELECT COUNT(*) AS total FROM house WHERE city = '深圳' AND district = '福田区' LIMIT 50
+L2-009   pass             1  聚合值符合预期（7）
+          SQL: SELECT COUNT(*) AS total FROM house WHERE city = '深圳' AND district = '福田区'
+          答: 深圳福田区一共有 **7 套**房源。
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳有多少套三居室
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'room_type': '三居室'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳有多少套三居室
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'room_type': '三居室'}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=None
+[sql_guard] 强制注入/收紧 LIMIT → SELECT COUNT(*) AS total FROM house WHERE city = '深圳' AND bedroom = 3 LIMIT 50
+L2-011   pass             1  聚合值符合预期（9）
+          SQL: SELECT COUNT(*) AS total FROM house WHERE city = '深圳' AND bedroom = 3
+          答: 深圳共有 **9 套**三居室房源。
+
+（说明：您提到的预算上限 3000 元/月，但三居室通常价格较高，若加上该预算条件可能没有匹配结果，因此这里按“深圳 + 三居室”统计了全部数量。如需查看具体房源，我可以再帮您列出。）
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳朝东的房源有多少套
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'orientation': '朝东'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳朝东的房源有多少套
+[collect_user_info] 本轮提取结果: {'city': '深圳', 'orientation': '朝东'}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=None
+[sql_guard] 强制注入/收紧 LIMIT → SELECT COUNT(*) AS cnt FROM house WHERE city = '深圳' AND orientation = '朝东' LIMIT 50
+L2-012   pass             1  聚合值符合预期（12）
+          SQL: SELECT COUNT(*) AS cnt FROM house WHERE city = '深圳' AND orientation = '朝东'
+          答: 深圳朝东的房源共有 **12 套**。
+
+（说明：查询条件为城市=深圳、朝向=朝东，未对预算和房屋类型做限制，因此统计的是全部朝东房源数量。）
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳房源数量超过5套的区有哪些
+[collect_user_info] 本轮提取结果: {'city': '深圳'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳房源数量超过5套的区有哪些
+[collect_user_info] 本轮提取结果: {'city': '深圳'}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=None
+[sql_guard] 强制注入/收紧 LIMIT → SELECT district, COUNT(*) AS cnt FROM house WHERE city = '深圳' GROUP BY district HAVING COUNT(*) > 5 ORDER BY cnt DESC LIMIT 50
+L3-015   pass             1  结果集一致（比对列 ['district']）
+          SQL: SELECT district, COUNT(*) AS cnt FROM house WHERE city = '深圳' GROUP BY district HAVING COUNT(*) > 5 ORDER BY cnt DESC
+          答: 深圳房源数量超过5套的区有：
+
+| 区 | 房源数量 |
+|---|---|
+| 福田区 | 7 套 |
+| 南山区 | 7 套 |
+| 宝安区 | 6 套 |
+
+共 3 个区满足条件。
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳哪个区租房最划算
+[collect_user_info] 本轮提取结果: {'city': '深圳'}
+------------------    into collect_user info    ----------------------------------------------
+[collect_user_info] ENTER  state 已有字段: {'city': None, 'district': None, 'budget_min': None, 'budget_max': None, 'room_type': None, 'room_count': None}
+[collect_user_info] ENTER  state messages 数: 1
+[collect_user_info] 最后一条用户消息(前80字): 深圳哪个区租房最划算
+[collect_user_info] 本轮提取结果: {'city': '深圳'}
+已收集⽤⼾信息: 城市=深圳, 区域=None, 预算=None-3000.0, 房间数=None
+[sql_guard] 强制注入/收紧 LIMIT → SELECT district, COUNT(*) AS cnt, ROUND(AVG(price),0) AS avg_price, MIN(price) AS min_price FROM house WHERE city='深圳' AND price<=3000 GROUP BY district ORDER BY avg_price ASC LIMIT 50
+L4-010   pass             2  期望值 '光明区' 出现在结果集中
+          SQL: SELECT district, COUNT(*) AS cnt, ROUND(AVG(price),0) AS avg_price, MIN(price) AS min_price FROM house WHERE city='深圳' AND price<=3000 GROUP BY district ORDER BY avg_price ASC
+          答: 根据深圳各区 3000 元/月以内的房源数据，**租房最划算的区是光明区**。
+
+## 各区性价比排名（预算 ≤3000 元/月）
+
+| 排名 | 区域 | 平均租金 | 最低租金 | 房源数 |
+|------|------|---------|---------|--------|
+| 🥇 1 

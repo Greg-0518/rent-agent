@@ -1,0 +1,139 @@
+# Edge · 空结果 —— 10 条，断言 count (=0)
+#
+# 考的不是"查出 0 行"，而是**查出 0 行之后会不会编造**。
+# 设计文档 §4.3 把它单列一档，因为这是 Agent 最典型的幻觉触发点：
+# 没有结果时模型倾向于"凑"一批房源出来。
+#
+# 断言口径：Agent 最终执行的 SQL 必须返回 0 行。若 Agent 根本没执行 SQL、
+# 直接用自然语言说"没有匹配"，判 UNVERIFIABLE（存疑）而不是通过——
+# 没有可验证的结果集，就不给分。
+#
+# 所有条件都刻意卡在数据的**真实边界之外**（见 notes），
+# 不是靠"没写这个条件"凑出空集，所以黄金 SQL 与用户问题一一对应。
+
+- id: Edge-001
+  tier: Edge
+  question: 深圳罗湖区朝南的房子，帮我推荐10套
+  params: {city: 深圳, district: 罗湖区}
+  room_count: 10
+  assert: {mode: count, count: 0}
+  gold_sql: >
+    SELECT id, price, orientation FROM house
+    WHERE city = '深圳' AND district = '罗湖区' AND orientation = '朝南'
+  notes: 罗湖区 5 套全部是朝北(4)或朝西(1)，朝南为 0。同一个区在 L1-010 有结果，形成对照
+
+- id: Edge-002
+  tier: Edge
+  holdout: true
+  question: 深圳龙岗区的三居室，帮我推荐10套
+  params: {city: 深圳, district: 龙岗区}
+  room_count: 10
+  assert: {mode: count, count: 0}
+  gold_sql: >
+    SELECT id, price, bedroom FROM house
+    WHERE city = '深圳' AND district = '龙岗区' AND bedroom = 3
+  notes: 龙岗区 5 套全是 1~2 居，三居为 0。全区三居只有 9 套，都在别的区
+
+- id: Edge-003
+  tier: Edge
+  question: 深圳光明区500元以下的房子，帮我推荐10套
+  params: {city: 深圳, district: 光明区, budget_max: 500}
+  # ↑ budget_max 必须跟着**问句**走（问句说"500元以下"），不能写成 3000：
+  #   中断追问的应答是 `_answer_for_interrupt` 按 params 拼出来的，
+  #   写成 3000 等于让"用户"对"500元以下的房子"这个问题回答"预算3000元以下"，
+  #   模型据此在 SQL 里加上 `price <= 3000` —— 与黄金 SQL 不符，判模型错，是冤的。
+  room_count: 10
+  assert: {mode: count, count: 0}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '光明区' AND price < 500
+  notes: 光明区最低 820；全表最低 550（宝安）。500 元在整张表里都查不到
+
+- id: Edge-004
+  tier: Edge
+  question: 深圳坪山区有海景的房子，帮我推荐10套
+  params: {city: 深圳, district: 坪山区}
+  room_count: 10
+  assert: {mode: count, count: 0}
+  gold_sql: >
+    SELECT id, price, description FROM house
+    WHERE city = '深圳' AND district = '坪山区' AND description LIKE '%海景%'
+  notes: 海景房源(id 6/34/37/46/49)全在盐田和宝安，坪山区为 0
+
+- id: Edge-005
+  tier: Edge
+  question: 深圳罗湖区朝南的一居室，帮我推荐10套
+  params: {city: 深圳, district: 罗湖区}
+  room_count: 10
+  assert: {mode: count, count: 0}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '罗湖区' AND bedroom = 1 AND orientation = '朝南'
+  notes: 罗湖一居只有 id 7/13，都是朝北。三条件叠加为空
+
+- id: Edge-006
+  tier: Edge
+  holdout: true
+  question: 深圳盐田区900元以下的房子，帮我推荐10套
+  params: {city: 深圳, district: 盐田区, budget_max: 900}
+  room_count: 10
+  assert: {mode: count, count: 0}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '盐田区' AND price < 900
+  notes: |
+    盐田区最低 980（id 6），所以卡在 900 才是确定的空集。
+    阈值刻意离边界留出余量：**出题时差点写成 1000**，那样 980 会命中、变成非空集——
+    空结果档的阈值必须在数据之外，不能贴着最小值
+
+- id: Edge-007
+  tier: Edge
+  question: 深圳福田区带小院子的房子，帮我推荐10套
+  params: {city: 深圳, district: 福田区}
+  room_count: 10
+  assert: {mode: count, count: 0}
+  gold_sql: >
+    SELECT id, price, description FROM house
+    WHERE city = '深圳' AND district = '福田区'
+      AND (description LIKE '%院子%' OR description LIKE '%花园%')
+  notes: 小院子/小花园只有 id 5(坪山)/27(光明)，福田区为 0
+
+- id: Edge-008
+  tier: Edge
+  question: 深圳龙华区3000元以上的房子，帮我推荐10套
+  # 问句是「3000元**以上**」，所以这里必须是 budget_min。
+  # 原值写成 budget_max: 3000 时，中断应答会告诉模型"预算3000元以下"——
+  # 与被问的那个问题正好相反，模型无论怎么写都会与黄金 SQL 不一致。
+  params: {city: 深圳, district: 龙华区, budget_min: 3000}
+  room_count: 10
+  assert: {mode: count, count: 0}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '龙华区' AND price > 3000
+  notes: 龙华区最高 2600，全表最高 3000。> 3000 在全表范围内都是空集
+
+- id: Edge-009
+  tier: Edge
+  question: 深圳南山区带小花园的房子，帮我推荐10套
+  params: {city: 深圳, district: 南山区}
+  room_count: 10
+  assert: {mode: count, count: 0}
+  gold_sql: >
+    SELECT id, price, description FROM house
+    WHERE city = '深圳' AND district = '南山区'
+      AND (description LIKE '%院子%' OR description LIKE '%花园%')
+  notes: 与 Edge-007 配对，考"没结果"在不同区是否都稳定
+
+- id: Edge-010
+  tier: Edge
+  holdout: true
+  question: 深圳月租超过2500元的一居室，帮我推荐10套
+  # 问句只说「超过2500元」，没有上界。原值多带一个 budget_max: 3000，
+  # 等于让模型额外收到一个问句里没有的上限条件，黄金 SQL 里却没有它。
+  params: {city: 深圳, budget_min: 2500}
+  room_count: 10
+  assert: {mode: count, count: 0}
+  gold_sql: >
+    SELECT id, price, bedroom FROM house
+    WHERE city = '深圳' AND bedroom = 1 AND price > 2500
+  notes: 一居室最贵 1450(id 16)。2500 以上的房源共 12 套，但全是 2~3 居——条件交叉为空

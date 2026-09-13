@@ -1,0 +1,210 @@
+# L3 · 复杂条件 —— 15 条，断言 id_set
+#
+# ⚠️ 这一档在设计文档里原本写的是"多表 JOIN"，但 `house_prd` 库里**只有 `house` 一张表**，
+#    没有可 JOIN 的对象。按实测改成三个真实存在的难点，难度来源不动：
+#
+#   1. **`floor` 是 varchar**（值是 `"3楼"`），要做数值比较必须 `CAST(REPLACE(floor,'楼',''))`
+#      ——这是替代 JOIN 的主要难度来源，也是 6 条用例的考点
+#   2. **`description` 是自由文本**，多关键词组合、以及"有电梯"与"无电梯"的正向语义区分
+#   3. **子查询 / OR 优先级 / BETWEEN 边界**
+
+# ---- 难点一：floor 字符串数值比较 ----
+
+- id: L3-001
+  tier: L3
+  question: 深圳福田区楼层在30楼以上的房源，推荐10套
+  params: {city: 深圳, district: 福田区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price, floor FROM house
+    WHERE city = '深圳' AND district = '福田区'
+      AND CAST(REPLACE(floor, '楼', '') AS UNSIGNED) >= 30
+    ORDER BY price ASC LIMIT 10
+  notes: 4 套（id 21/30/41/50）。直接写 floor >= '30楼' 是字符串比较，会得到错误结果
+
+- id: L3-002
+  tier: L3
+  question: 深圳宝安区或龙岗区里，楼层10楼以下的一居室，推荐10套
+  params: {city: 深圳, district: 宝安区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price, floor FROM house
+    WHERE city = '深圳' AND district IN ('宝安区', '龙岗区') AND bedroom = 1
+      AND CAST(REPLACE(floor, '楼', '') AS UNSIGNED) < 10
+    ORDER BY price ASC LIMIT 10
+  notes: 5 套（id 1/10/23 + 2/24）。两个考点：IN 多值 + floor 数值化
+
+- id: L3-003
+  tier: L3
+  holdout: true
+  question: 深圳南山区楼层10楼以上的两居室，推荐10套
+  params: {city: 深圳, district: 南山区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price, floor FROM house
+    WHERE city = '深圳' AND district = '南山区' AND bedroom = 2
+      AND CAST(REPLACE(floor, '楼', '') AS UNSIGNED) >= 10
+    ORDER BY price ASC LIMIT 10
+  notes: 3 套（id 20/29/31，楼层 25/28/15）。南山区两居共 3 套，全部满足
+
+- id: L3-004
+  tier: L3
+  question: 深圳楼层在10楼到18楼之间的两居室，推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price, floor FROM house
+    WHERE city = '深圳' AND bedroom = 2
+      AND CAST(REPLACE(floor, '楼', '') AS UNSIGNED) BETWEEN 10 AND 18
+    ORDER BY price ASC LIMIT 10
+  notes: 8 套（id 12/22/25/31/34/38/42/47）。BETWEEN 闭区间，18 楼包含在内
+
+# ---- 难点二：description 自由文本 ----
+
+- id: L3-005
+  tier: L3
+  question: 深圳有电梯但租金低于1000元的房源，推荐10套
+  params: {city: 深圳, budget_max: 1000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND description LIKE '%有电梯%' AND price < 1000
+    ORDER BY price ASC LIMIT 10
+  notes: 5 套（id 1/3/4/8/9）。LIKE '%有电梯%' 不能写成 '%电梯%'（那会带上 15 套"无电梯"）
+
+- id: L3-006
+  tier: L3
+  question: 深圳描述里提到近地铁的房源，推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND description LIKE '%近地铁%'
+    ORDER BY price ASC LIMIT 10
+  notes: 4 套（id 1/12/30/35）。描述里同时有"近公交站""近深圳北站"，考关键词精确性
+
+- id: L3-007
+  tier: L3
+  question: 深圳一楼并且可以养宠物的房子，推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price, floor FROM house
+    WHERE city = '深圳' AND floor = '1楼' AND description LIKE '%养宠物%'
+    ORDER BY price ASC LIMIT 10
+  notes: 1 套（id 5）。另一套 1 楼（id 27）是"适合老人"，考条件是否真的同时成立
+
+- id: L3-008
+  tier: L3
+  question: 深圳龙华区或者龙岗区里，有电梯的房源，推荐10套
+  params: {city: 深圳, district: 龙华区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price, district FROM house
+    WHERE city = '深圳' AND district IN ('龙华区', '龙岗区')
+      AND description LIKE '%有电梯%'
+    ORDER BY price ASC LIMIT 10
+  notes: |
+    5 套（龙华 5 套全部有电梯，龙岗 5 套全部无电梯）。
+    这条是 **OR 优先级陷阱**：写成 `district='龙华区' OR district='龙岗区' AND LIKE ...`
+    会把龙华 5 套全部带出（结果一样），但若写成 `district='龙华区' OR (district='龙岗区' AND 无电梯)`
+    就会多出龙岗的。答案集合对 OR/AND 的括号敏感
+
+- id: L3-009
+  tier: L3
+  holdout: true
+  question: 深圳两居室中租金在1500到2000之间的房源，推荐10套
+  params: {city: 深圳, budget_min: 1500, budget_max: 2000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND bedroom = 2 AND price BETWEEN 1500 AND 2000
+    ORDER BY price ASC LIMIT 10
+  notes: 9 套。BETWEEN 含两端（1500 与 2000 都有对应房源，边界可验证）
+
+- id: L3-010
+  tier: L3
+  question: 深圳描述里同时提到精装和近的房源，推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND description LIKE '%精装%' AND description LIKE '%近%'
+    ORDER BY price ASC LIMIT 10
+  notes: 6 套（id 3/8/11/29/31/45）。id 20 是"豪华装修"不含"精装"，考是否被误纳
+
+# ---- 难点三：排序 / 子查询 / HAVING ----
+
+- id: L3-011
+  tier: L3
+  question: 深圳三居室里最便宜的2套，帮我推荐
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 2
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND bedroom = 3
+    ORDER BY price ASC LIMIT 2
+  notes: 2 套（id 36/43 = 2400/2450）
+
+- id: L3-012
+  tier: L3
+  question: 深圳不是朝北的房子里最便宜的3套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 3
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND orientation <> '朝北'
+    ORDER BY price ASC LIMIT 3
+  notes: 3 套（id 1/2/10 = 550/680/720）。考 <> 与"最便宜"方向的组合
+
+- id: L3-013
+  tier: L3
+  question: 深圳一居室里不是朝北的房源中最贵的3套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 3
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND bedroom = 1 AND orientation <> '朝北'
+    ORDER BY price DESC LIMIT 3
+  notes: 3 套（id 16/23/28 = 1450/1380/1300）
+
+- id: L3-014
+  tier: L3
+  holdout: true
+  question: 深圳福田区里租金高于本区平均租金的房源，推荐10套
+  params: {city: 深圳, district: 福田区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '福田区'
+      AND price > (SELECT AVG(price) FROM house WHERE district = '福田区')
+    ORDER BY price ASC LIMIT 10
+  notes: 3 套（id 32/41/50，均价 2090）。考相关子查询；写成全表均价会得到不同结果
+
+- id: L3-015
+  tier: L3
+  question: 深圳房源数量超过5套的区有哪些
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT district FROM house
+    WHERE city = '深圳'
+    GROUP BY district HAVING COUNT(*) > 5
+  notes: |
+    3 个区（宝安 6 / 南山 7 / 福田 7）。考 HAVING 与 WHERE 的区别：
+    写成 WHERE COUNT(*) > 5 在 MySQL 里直接报错。
+    比对列取 district 交集，Agent 多返回一列 count 也不影响。

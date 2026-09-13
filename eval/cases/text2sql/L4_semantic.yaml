@@ -1,0 +1,178 @@
+# L4 · 模糊语义（口语 → 字段映射）—— 12 条，断言 id_set / scalar
+#
+# 用户不会说"description LIKE '%电梯%'"，只会说"我不想爬楼梯"。
+# 这一档考的是**口语诉求能不能落到真实存在的列上**，因此每条都必须在
+# `house` 表里有确定的落脚点；没有字段支撑的语义（"通勤30分钟内""离公司近"）
+# 一律不放——`house` 表没有坐标/地铁距离字段，那种用例只能靠人主观判分，
+# 与"规则断言优先"相悖。
+#
+# 黄金 SQL 用的关键词都取自真实 description 文本，可由下面的 notes 逐一复核。
+
+- id: L4-001
+  tier: L4
+  question: 深圳有没有安静一点的地方住，帮我推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND description LIKE '%安静%'
+    ORDER BY price ASC LIMIT 10
+  notes: 口语"安静" → description 含"安静"；正好 4 套（id 2/24/39/46），全表复查过
+
+- id: L4-002
+  tier: L4
+  question: 深圳想找个可以养宠物的房子，帮我推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND description LIKE '%养宠物%'
+    ORDER BY price ASC LIMIT 10
+  notes: 1 套（id 5，"适合养宠物"）
+
+- id: L4-003
+  tier: L4
+  question: 深圳想找个能做饭的房子，帮我推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND description LIKE '%做饭%'
+    ORDER BY price ASC LIMIT 10
+  notes: 1 套（id 23，"可做饭"）
+
+- id: L4-004
+  tier: L4
+  question: 深圳福田区我不想爬楼梯，帮我推荐10套
+  params: {city: 深圳, district: 福田区, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price, floor FROM house
+    WHERE city = '深圳' AND district = '福田区' AND description LIKE '%有电梯%'
+    ORDER BY price ASC LIMIT 10
+  notes: |
+    口语"不想爬楼梯" → 要有电梯。7 套（福田区共 7 套，全部有电梯）。
+    注意**不能**映射成 description LIKE '%爬楼梯%'（表里没有这个说法），
+    也不能映射成低楼层——语义是"有电梯"，不是"楼低"。
+
+- id: L4-005
+  tier: L4
+  holdout: true
+  question: 深圳有没有能拎包入住的房子，帮我推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND description LIKE '%拎包入住%'
+    ORDER BY price ASC LIMIT 10
+  notes: 2 套（id 12/37）
+
+- id: L4-006
+  tier: L4
+  question: 深圳想找装修好一点的房子，帮我推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳'
+      AND (description LIKE '%豪华%' OR description LIKE '%精装%')
+    ORDER BY price ASC LIMIT 10
+  notes: |
+    「装修好一点」→ 装修档次条件。**黄金取 豪华 ∪ 精装 的并集**（8 套，id 3/8/11/20/29/31/40/45）。
+
+    为什么不是只取「豪华装修」：这句话的语义阈值本来就落在两档之间，
+    「豪华装修」和「精装修」都是站得住的读法，只判「豪华」等于在考
+    *猜出题人偏好哪一档*，而不是考*有没有把"装修好"识别成一个装修档次条件*。
+    实测模型返回的正是这 8 套（`%精装% OR %装修好% OR %豪华装修% OR %高档装修%`
+    → 其中两个词在表里没有命中，等价于并集），且如实说明"共 8 套，不足 10 套"——
+    这个答案比黄金更完整。原黄金只取 2 套，判 FAIL，是把口径差异记成了能力缺陷。
+
+    放宽后这条仍然能测出东西：返回全部「装修」房源（含 id 1 简单装修、18 简易装修）
+    依然缺 0 多 2 判 FAIL；忽略装修条件返回 10 套普通房源同样 FAIL。
+    它测的是「有没有识别出装修档次」，不是「猜中哪一档」。
+
+- id: L4-007
+  tier: L4
+  question: 深圳附近要有超市的房子，帮我推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND description LIKE '%超市%'
+    ORDER BY price ASC LIMIT 10
+  notes: 1 套（id 4，"周边有超市"）
+
+- id: L4-008
+  tier: L4
+  question: 深圳想要带小院子或者小花园的房子，帮我推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳'
+      AND (description LIKE '%院子%' OR description LIKE '%花园%')
+    ORDER BY price ASC LIMIT 10
+  notes: 2 套（id 5 "小院子" / id 27 "小花园"）。考 OR 与括号，且两套都在 1 楼
+
+- id: L4-009
+  tier: L4
+  question: 深圳有海景并且租金不超过2500的房子，帮我推荐10套
+  params: {city: 深圳, budget_max: 2500}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND description LIKE '%海景%' AND price <= 2500
+    ORDER BY price ASC LIMIT 10
+  notes: |
+    2 套（id 6 "海景房" 980 / id 34 "海景房" 2300）。
+    值钱的干扰项：id 20 描述含"近海岸城"（商场名，非海景），若写成 LIKE '%海%' 会误纳；
+    id 37/46/49 是真海景但租金 2700+ 被预算挡住
+
+- id: L4-010
+  tier: L4
+  question: 深圳哪个区租房最划算
+  params: {city: 深圳, budget_max: 3000}
+  assert: {mode: scalar}
+  gold_sql: >
+    SELECT district, ROUND(AVG(price), 2) AS avg_price FROM house
+    WHERE city = '深圳'
+    GROUP BY district ORDER BY AVG(price) ASC LIMIT 1
+  notes: |
+    口语"最划算" → 平均租金最低 → 光明区。
+    与 L2-002 是同一答案、不同问法：L2 考聚合写法，这里考**口语到聚合的语义跳跃**，
+    用来观察"答案对但路径错/路径对但答错"两类失败是否可分辨。
+
+- id: L4-011
+  tier: L4
+  holdout: true
+  question: 深圳要离地铁近的，而且月租不要超过1500，帮我推荐10套
+  params: {city: 深圳, budget_max: 1500}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND description LIKE '%近地铁%' AND price <= 1500
+    ORDER BY price ASC LIMIT 10
+  notes: 2 套（id 1 = 550 / id 12 = 1350）。另外两套"近地铁"（id 30/35）超预算
+
+- id: L4-012
+  tier: L4
+  question: 深圳有电梯的三居室，预算3000以内，帮我推荐10套
+  params: {city: 深圳, budget_max: 3000}
+  room_count: 10
+  assert: {mode: id_set}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND bedroom = 3
+      AND description LIKE '%有电梯%' AND price <= 3000
+    ORDER BY price ASC LIMIT 10
+  notes: 9 套（三居室全部有电梯且全部 ≤3000，所以这条实际考的是"条件都写对没"）

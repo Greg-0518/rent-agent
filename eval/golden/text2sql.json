@@ -1,0 +1,1954 @@
+{
+  "generated_at": "2026-09-13T20:25:14",
+  "module": "text2sql",
+  "case_count": 89,
+  "db": {
+    "database": "192.168.144.128:3306/house_prd",
+    "house_rows": 50
+  },
+  "cases": {
+    "Edge-001": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price, orientation FROM house WHERE city = '深圳' AND district = '罗湖区' AND orientation = '朝南'",
+      "columns": [
+        "id",
+        "price",
+        "orientation"
+      ],
+      "rows": [],
+      "row_count": 0,
+      "scalar": null
+    },
+    "Edge-002": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price, bedroom FROM house WHERE city = '深圳' AND district = '龙岗区' AND bedroom = 3",
+      "columns": [
+        "id",
+        "price",
+        "bedroom"
+      ],
+      "rows": [],
+      "row_count": 0,
+      "scalar": null
+    },
+    "Edge-003": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '光明区' AND price < 500",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [],
+      "row_count": 0,
+      "scalar": null
+    },
+    "Edge-004": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price, description FROM house WHERE city = '深圳' AND district = '坪山区' AND description LIKE '%海景%'",
+      "columns": [
+        "id",
+        "price",
+        "description"
+      ],
+      "rows": [],
+      "row_count": 0,
+      "scalar": null
+    },
+    "Edge-005": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '罗湖区' AND bedroom = 1 AND orientation = '朝南'",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [],
+      "row_count": 0,
+      "scalar": null
+    },
+    "Edge-006": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '盐田区' AND price < 900",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [],
+      "row_count": 0,
+      "scalar": null
+    },
+    "Edge-007": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price, description FROM house WHERE city = '深圳' AND district = '福田区'\n  AND (description LIKE '%院子%' OR description LIKE '%花园%')",
+      "columns": [
+        "id",
+        "price",
+        "description"
+      ],
+      "rows": [],
+      "row_count": 0,
+      "scalar": null
+    },
+    "Edge-008": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '龙华区' AND price > 3000",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [],
+      "row_count": 0,
+      "scalar": null
+    },
+    "Edge-009": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price, description FROM house WHERE city = '深圳' AND district = '南山区'\n  AND (description LIKE '%院子%' OR description LIKE '%花园%')",
+      "columns": [
+        "id",
+        "price",
+        "description"
+      ],
+      "rows": [],
+      "row_count": 0,
+      "scalar": null
+    },
+    "Edge-010": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price, bedroom FROM house WHERE city = '深圳' AND bedroom = 1 AND price > 2500",
+      "columns": [
+        "id",
+        "price",
+        "bedroom"
+      ],
+      "rows": [],
+      "row_count": 0,
+      "scalar": null
+    },
+    "Edge-001T": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '罗湖区'",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          7.0,
+          600.0
+        ],
+        [
+          13.0,
+          1100.0
+        ],
+        [
+          22.0,
+          1600.0
+        ],
+        [
+          33.0,
+          2100.0
+        ],
+        [
+          42.0,
+          2250.0
+        ]
+      ],
+      "row_count": 5,
+      "scalar": 7.0
+    },
+    "Edge-002T": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price, bedroom FROM house WHERE city = '深圳' AND bedroom = 3",
+      "columns": [
+        "id",
+        "price",
+        "bedroom"
+      ],
+      "rows": [
+        [
+          36.0,
+          2400.0,
+          3.0
+        ],
+        [
+          37.0,
+          2700.0,
+          3.0
+        ],
+        [
+          40.0,
+          2800.0,
+          3.0
+        ],
+        [
+          41.0,
+          2950.0,
+          3.0
+        ],
+        [
+          43.0,
+          2450.0,
+          3.0
+        ],
+        [
+          45.0,
+          2600.0,
+          3.0
+        ],
+        [
+          46.0,
+          2900.0,
+          3.0
+        ],
+        [
+          49.0,
+          2750.0,
+          3.0
+        ],
+        [
+          50.0,
+          3000.0,
+          3.0
+        ]
+      ],
+      "row_count": 9,
+      "scalar": 36.0
+    },
+    "Edge-003T": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '光明区'",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          4.0,
+          820.0
+        ],
+        [
+          18.0,
+          1050.0
+        ],
+        [
+          27.0,
+          1080.0
+        ],
+        [
+          38.0,
+          2150.0
+        ],
+        [
+          47.0,
+          2180.0
+        ]
+      ],
+      "row_count": 5,
+      "scalar": 4.0
+    },
+    "Edge-004T": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price, description FROM house WHERE city = '深圳' AND description LIKE '%海景%'",
+      "columns": [
+        "id",
+        "price",
+        "description"
+      ],
+      "rows": [
+        [
+          6.0,
+          980.0,
+          "有电梯，海景房，环境优美"
+        ],
+        [
+          34.0,
+          2300.0,
+          "有电梯，碧海片区，海景房"
+        ],
+        [
+          37.0,
+          2700.0,
+          "有电梯，一线海景，拎包入住"
+        ],
+        [
+          46.0,
+          2900.0,
+          "有电梯，沙头角海景，安静舒适"
+        ],
+        [
+          49.0,
+          2750.0,
+          "有电梯，深圳湾附近，无敌海景"
+        ]
+      ],
+      "row_count": 5,
+      "scalar": 6.0
+    },
+    "Edge-005T": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND bedroom = 1 AND orientation = '朝南'",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          1.0,
+          550.0
+        ],
+        [
+          4.0,
+          820.0
+        ],
+        [
+          6.0,
+          980.0
+        ],
+        [
+          9.0,
+          950.0
+        ],
+        [
+          11.0,
+          1200.0
+        ],
+        [
+          19.0,
+          1180.0
+        ],
+        [
+          24.0,
+          1250.0
+        ],
+        [
+          28.0,
+          1300.0
+        ]
+      ],
+      "row_count": 8,
+      "scalar": 1.0
+    },
+    "Edge-006T": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '盐田区'",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          6.0,
+          980.0
+        ],
+        [
+          17.0,
+          1700.0
+        ],
+        [
+          26.0,
+          1800.0
+        ],
+        [
+          37.0,
+          2700.0
+        ],
+        [
+          46.0,
+          2900.0
+        ]
+      ],
+      "row_count": 5,
+      "scalar": 6.0
+    },
+    "Edge-007T": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price, description FROM house WHERE city = '深圳'\n  AND (description LIKE '%院子%' OR description LIKE '%花园%')",
+      "columns": [
+        "id",
+        "price",
+        "description"
+      ],
+      "rows": [
+        [
+          5.0,
+          900.0,
+          "无电梯，带小院子，适合养宠物"
+        ],
+        [
+          27.0,
+          1080.0,
+          "无电梯，带小花园，适合老人"
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 5.0
+    },
+    "Edge-008T": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '龙华区'",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          3.0,
+          750.0
+        ],
+        [
+          16.0,
+          1450.0
+        ],
+        [
+          25.0,
+          1550.0
+        ],
+        [
+          36.0,
+          2400.0
+        ],
+        [
+          45.0,
+          2600.0
+        ]
+      ],
+      "row_count": 5,
+      "scalar": 3.0
+    },
+    "Edge-009T": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '南山区'",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          9.0,
+          950.0
+        ],
+        [
+          11.0,
+          1200.0
+        ],
+        [
+          20.0,
+          1850.0
+        ],
+        [
+          29.0,
+          1900.0
+        ],
+        [
+          31.0,
+          2200.0
+        ],
+        [
+          40.0,
+          2800.0
+        ],
+        [
+          49.0,
+          2750.0
+        ]
+      ],
+      "row_count": 7,
+      "scalar": 9.0
+    },
+    "Edge-010T": {
+      "mode": "count",
+      "gold_sql": "SELECT id, price, bedroom FROM house WHERE city = '深圳' AND price > 2500",
+      "columns": [
+        "id",
+        "price",
+        "bedroom"
+      ],
+      "rows": [
+        [
+          37.0,
+          2700.0,
+          3.0
+        ],
+        [
+          40.0,
+          2800.0,
+          3.0
+        ],
+        [
+          41.0,
+          2950.0,
+          3.0
+        ],
+        [
+          45.0,
+          2600.0,
+          3.0
+        ],
+        [
+          46.0,
+          2900.0,
+          3.0
+        ],
+        [
+          49.0,
+          2750.0,
+          3.0
+        ],
+        [
+          50.0,
+          3000.0,
+          3.0
+        ]
+      ],
+      "row_count": 7,
+      "scalar": 37.0
+    },
+    "L1-001": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '宝安区' AND bedroom = 1 AND price <= 3000 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          1.0,
+          550.0
+        ],
+        [
+          10.0,
+          720.0
+        ],
+        [
+          23.0,
+          1380.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 1.0
+    },
+    "L1-002": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '南山区' AND bedroom = 2 AND price <= 2000 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          20.0,
+          1850.0
+        ],
+        [
+          29.0,
+          1900.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 20.0
+    },
+    "L1-003": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '福田区' AND bedroom = 3 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          41.0,
+          2950.0
+        ],
+        [
+          50.0,
+          3000.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 41.0
+    },
+    "L1-004": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '龙岗区' AND price <= 1500 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          2.0,
+          680.0
+        ],
+        [
+          24.0,
+          1250.0
+        ],
+        [
+          15.0,
+          1280.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 2.0
+    },
+    "L1-005": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '盐田区' AND orientation = '朝南' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          6.0,
+          980.0
+        ],
+        [
+          17.0,
+          1700.0
+        ],
+        [
+          26.0,
+          1800.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 6.0
+    },
+    "L1-006": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '南山区' AND orientation = '朝南' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          9.0,
+          950.0
+        ],
+        [
+          11.0,
+          1200.0
+        ],
+        [
+          20.0,
+          1850.0
+        ],
+        [
+          31.0,
+          2200.0
+        ],
+        [
+          49.0,
+          2750.0
+        ],
+        [
+          40.0,
+          2800.0
+        ]
+      ],
+      "row_count": 6,
+      "scalar": 9.0
+    },
+    "L1-007": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '光明区' AND price <= 2000 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          4.0,
+          820.0
+        ],
+        [
+          18.0,
+          1050.0
+        ],
+        [
+          27.0,
+          1080.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 4.0
+    },
+    "L1-008": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '坪山区' AND bedroom = 2 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          5.0,
+          900.0
+        ],
+        [
+          48.0,
+          2020.0
+        ],
+        [
+          39.0,
+          2080.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 5.0
+    },
+    "L1-009": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '龙华区' AND orientation = '朝南' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          36.0,
+          2400.0
+        ],
+        [
+          45.0,
+          2600.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 36.0
+    },
+    "L1-010": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '罗湖区' AND price <= 2000 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          7.0,
+          600.0
+        ],
+        [
+          13.0,
+          1100.0
+        ],
+        [
+          22.0,
+          1600.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 7.0
+    },
+    "L1-011": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '福田区' AND price >= 2500 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          32.0,
+          2500.0
+        ],
+        [
+          41.0,
+          2950.0
+        ],
+        [
+          50.0,
+          3000.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 32.0
+    },
+    "L1-012": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '南山区' AND price >= 2500 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          49.0,
+          2750.0
+        ],
+        [
+          40.0,
+          2800.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 49.0
+    },
+    "L1-013": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '宝安区' AND bedroom = 2 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          14.0,
+          1500.0
+        ],
+        [
+          34.0,
+          2300.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 14.0
+    },
+    "L1-014": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '龙岗区' AND bedroom = 2 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          15.0,
+          1280.0
+        ],
+        [
+          35.0,
+          2050.0
+        ],
+        [
+          44.0,
+          2350.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 15.0
+    },
+    "L1-015": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '盐田区' AND bedroom = 2 AND orientation = '朝南' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          17.0,
+          1700.0
+        ],
+        [
+          26.0,
+          1800.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 17.0
+    },
+    "L1-016": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '坪山区' AND bedroom = 1 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          19.0,
+          1180.0
+        ],
+        [
+          28.0,
+          1300.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 19.0
+    },
+    "L1-017": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' ORDER BY price ASC LIMIT 3",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          1.0,
+          550.0
+        ],
+        [
+          7.0,
+          600.0
+        ],
+        [
+          2.0,
+          680.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 1.0
+    },
+    "L1-018": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' ORDER BY price DESC LIMIT 3",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          50.0,
+          3000.0
+        ],
+        [
+          41.0,
+          2950.0
+        ],
+        [
+          46.0,
+          2900.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 50.0
+    },
+    "L1-019": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '南山区' ORDER BY price ASC LIMIT 2",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          9.0,
+          950.0
+        ],
+        [
+          11.0,
+          1200.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 9.0
+    },
+    "L1-020": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '福田区' ORDER BY price DESC LIMIT 2",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          50.0,
+          3000.0
+        ],
+        [
+          41.0,
+          2950.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 50.0
+    },
+    "L2-001": {
+      "mode": "scalar",
+      "gold_sql": "SELECT district, ROUND(AVG(price), 2) AS avg_price FROM house WHERE city = '深圳' GROUP BY district ORDER BY AVG(price) DESC LIMIT 1",
+      "columns": [
+        "district",
+        "avg_price"
+      ],
+      "rows": [
+        [
+          "福田区",
+          2090.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": "福田区"
+    },
+    "L2-002": {
+      "mode": "scalar",
+      "gold_sql": "SELECT district, ROUND(AVG(price), 2) AS avg_price FROM house WHERE city = '深圳' GROUP BY district ORDER BY AVG(price) ASC LIMIT 1",
+      "columns": [
+        "district",
+        "avg_price"
+      ],
+      "rows": [
+        [
+          "光明区",
+          1456.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": "光明区"
+    },
+    "L2-003": {
+      "mode": "scalar",
+      "gold_sql": "SELECT ROUND(AVG(price), 2) FROM house WHERE city = '深圳' AND district = '福田区'",
+      "columns": [
+        "ROUND(AVG(price), 2)"
+      ],
+      "rows": [
+        [
+          2090.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 2090.0
+    },
+    "L2-004": {
+      "mode": "scalar",
+      "gold_sql": "SELECT price FROM house WHERE city = '深圳' ORDER BY price DESC LIMIT 1",
+      "columns": [
+        "price"
+      ],
+      "rows": [
+        [
+          3000.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 3000.0
+    },
+    "L2-005": {
+      "mode": "scalar",
+      "gold_sql": "SELECT price FROM house WHERE city = '深圳' ORDER BY price ASC LIMIT 1",
+      "columns": [
+        "price"
+      ],
+      "rows": [
+        [
+          550.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 550.0
+    },
+    "L2-006": {
+      "mode": "scalar",
+      "gold_sql": "SELECT MIN(price) FROM house WHERE city = '深圳' AND bedroom = 2",
+      "columns": [
+        "MIN(price)"
+      ],
+      "rows": [
+        [
+          900.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 900.0
+    },
+    "L2-007": {
+      "mode": "scalar",
+      "gold_sql": "SELECT MAX(price) FROM house WHERE city = '深圳' AND district = '宝安区'",
+      "columns": [
+        "MAX(price)"
+      ],
+      "rows": [
+        [
+          2450.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 2450.0
+    },
+    "L2-008": {
+      "mode": "count",
+      "gold_sql": "SELECT COUNT(*) FROM house WHERE city = '深圳' AND bedroom = 1",
+      "columns": [
+        "COUNT(*)"
+      ],
+      "rows": [
+        [
+          18.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 18.0
+    },
+    "L2-009": {
+      "mode": "count",
+      "gold_sql": "SELECT COUNT(*) FROM house WHERE city = '深圳' AND district = '福田区'",
+      "columns": [
+        "COUNT(*)"
+      ],
+      "rows": [
+        [
+          7.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 7.0
+    },
+    "L2-010": {
+      "mode": "count",
+      "gold_sql": "SELECT COUNT(*) FROM house WHERE city = '深圳' AND description LIKE '%有电梯%'",
+      "columns": [
+        "COUNT(*)"
+      ],
+      "rows": [
+        [
+          35.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 35.0
+    },
+    "L2-011": {
+      "mode": "count",
+      "gold_sql": "SELECT COUNT(*) FROM house WHERE city = '深圳' AND bedroom = 3",
+      "columns": [
+        "COUNT(*)"
+      ],
+      "rows": [
+        [
+          9.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 9.0
+    },
+    "L2-012": {
+      "mode": "count",
+      "gold_sql": "SELECT COUNT(*) FROM house WHERE city = '深圳' AND orientation = '朝东'",
+      "columns": [
+        "COUNT(*)"
+      ],
+      "rows": [
+        [
+          12.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 12.0
+    },
+    "L3-001": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price, floor FROM house WHERE city = '深圳' AND district = '福田区'\n  AND CAST(REPLACE(floor, '楼', '') AS UNSIGNED) >= 30\nORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price",
+        "floor"
+      ],
+      "rows": [
+        [
+          21.0,
+          1950.0,
+          "30楼"
+        ],
+        [
+          30.0,
+          2000.0,
+          "32楼"
+        ],
+        [
+          41.0,
+          2950.0,
+          "40楼"
+        ],
+        [
+          50.0,
+          3000.0,
+          "45楼"
+        ]
+      ],
+      "row_count": 4,
+      "scalar": 21.0
+    },
+    "L3-002": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price, floor FROM house WHERE city = '深圳' AND district IN ('宝安区', '龙岗区') AND bedroom = 1\n  AND CAST(REPLACE(floor, '楼', '') AS UNSIGNED) < 10\nORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price",
+        "floor"
+      ],
+      "rows": [
+        [
+          1.0,
+          550.0,
+          "3楼"
+        ],
+        [
+          2.0,
+          680.0,
+          "5楼"
+        ],
+        [
+          10.0,
+          720.0,
+          "6楼"
+        ],
+        [
+          24.0,
+          1250.0,
+          "5楼"
+        ],
+        [
+          23.0,
+          1380.0,
+          "7楼"
+        ]
+      ],
+      "row_count": 5,
+      "scalar": 1.0
+    },
+    "L3-003": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price, floor FROM house WHERE city = '深圳' AND district = '南山区' AND bedroom = 2\n  AND CAST(REPLACE(floor, '楼', '') AS UNSIGNED) >= 10\nORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price",
+        "floor"
+      ],
+      "rows": [
+        [
+          20.0,
+          1850.0,
+          "25楼"
+        ],
+        [
+          29.0,
+          1900.0,
+          "28楼"
+        ],
+        [
+          31.0,
+          2200.0,
+          "15楼"
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 20.0
+    },
+    "L3-004": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price, floor FROM house WHERE city = '深圳' AND bedroom = 2\n  AND CAST(REPLACE(floor, '楼', '') AS UNSIGNED) BETWEEN 10 AND 18\nORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price",
+        "floor"
+      ],
+      "rows": [
+        [
+          12.0,
+          1350.0,
+          "18楼"
+        ],
+        [
+          25.0,
+          1550.0,
+          "16楼"
+        ],
+        [
+          22.0,
+          1600.0,
+          "11楼"
+        ],
+        [
+          38.0,
+          2150.0,
+          "11楼"
+        ],
+        [
+          47.0,
+          2180.0,
+          "14楼"
+        ],
+        [
+          31.0,
+          2200.0,
+          "15楼"
+        ],
+        [
+          42.0,
+          2250.0,
+          "12楼"
+        ],
+        [
+          34.0,
+          2300.0,
+          "18楼"
+        ]
+      ],
+      "row_count": 8,
+      "scalar": 12.0
+    },
+    "L3-005": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND description LIKE '%有电梯%' AND price < 1000 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          1.0,
+          550.0
+        ],
+        [
+          3.0,
+          750.0
+        ],
+        [
+          4.0,
+          820.0
+        ],
+        [
+          8.0,
+          880.0
+        ],
+        [
+          9.0,
+          950.0
+        ],
+        [
+          6.0,
+          980.0
+        ]
+      ],
+      "row_count": 6,
+      "scalar": 1.0
+    },
+    "L3-006": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND description LIKE '%近地铁%' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          1.0,
+          550.0
+        ],
+        [
+          12.0,
+          1350.0
+        ],
+        [
+          30.0,
+          2000.0
+        ],
+        [
+          35.0,
+          2050.0
+        ]
+      ],
+      "row_count": 4,
+      "scalar": 1.0
+    },
+    "L3-007": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price, floor FROM house WHERE city = '深圳' AND floor = '1楼' AND description LIKE '%养宠物%' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price",
+        "floor"
+      ],
+      "rows": [
+        [
+          5.0,
+          900.0,
+          "1楼"
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 5.0
+    },
+    "L3-008": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price, district FROM house WHERE city = '深圳' AND district IN ('龙华区', '龙岗区')\n  AND description LIKE '%有电梯%'\nORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price",
+        "district"
+      ],
+      "rows": [
+        [
+          3.0,
+          750.0,
+          "龙华区"
+        ],
+        [
+          16.0,
+          1450.0,
+          "龙华区"
+        ],
+        [
+          25.0,
+          1550.0,
+          "龙华区"
+        ],
+        [
+          36.0,
+          2400.0,
+          "龙华区"
+        ],
+        [
+          45.0,
+          2600.0,
+          "龙华区"
+        ]
+      ],
+      "row_count": 5,
+      "scalar": 3.0
+    },
+    "L3-009": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND bedroom = 2 AND price BETWEEN 1500 AND 2000 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          14.0,
+          1500.0
+        ],
+        [
+          25.0,
+          1550.0
+        ],
+        [
+          22.0,
+          1600.0
+        ],
+        [
+          17.0,
+          1700.0
+        ],
+        [
+          26.0,
+          1800.0
+        ],
+        [
+          20.0,
+          1850.0
+        ],
+        [
+          29.0,
+          1900.0
+        ],
+        [
+          21.0,
+          1950.0
+        ],
+        [
+          30.0,
+          2000.0
+        ]
+      ],
+      "row_count": 9,
+      "scalar": 14.0
+    },
+    "L3-010": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND description LIKE '%精装%' AND description LIKE '%近%' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          3.0,
+          750.0
+        ],
+        [
+          8.0,
+          880.0
+        ],
+        [
+          11.0,
+          1200.0
+        ],
+        [
+          29.0,
+          1900.0
+        ],
+        [
+          31.0,
+          2200.0
+        ],
+        [
+          45.0,
+          2600.0
+        ]
+      ],
+      "row_count": 6,
+      "scalar": 3.0
+    },
+    "L3-011": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND bedroom = 3 ORDER BY price ASC LIMIT 2",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          36.0,
+          2400.0
+        ],
+        [
+          43.0,
+          2450.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 36.0
+    },
+    "L3-012": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND orientation <> '朝北' ORDER BY price ASC LIMIT 3",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          1.0,
+          550.0
+        ],
+        [
+          2.0,
+          680.0
+        ],
+        [
+          10.0,
+          720.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 1.0
+    },
+    "L3-013": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND bedroom = 1 AND orientation <> '朝北' ORDER BY price DESC LIMIT 3",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          16.0,
+          1450.0
+        ],
+        [
+          23.0,
+          1380.0
+        ],
+        [
+          28.0,
+          1300.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 16.0
+    },
+    "L3-014": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND district = '福田区'\n  AND price > (SELECT AVG(price) FROM house WHERE district = '福田区')\nORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          32.0,
+          2500.0
+        ],
+        [
+          41.0,
+          2950.0
+        ],
+        [
+          50.0,
+          3000.0
+        ]
+      ],
+      "row_count": 3,
+      "scalar": 32.0
+    },
+    "L3-015": {
+      "mode": "id_set",
+      "gold_sql": "SELECT district FROM house WHERE city = '深圳' GROUP BY district HAVING COUNT(*) > 5",
+      "columns": [
+        "district"
+      ],
+      "rows": [
+        [
+          "宝安区"
+        ],
+        [
+          "福田区"
+        ],
+        [
+          "南山区"
+        ]
+      ],
+      "row_count": 3,
+      "scalar": "宝安区"
+    },
+    "L4-001": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND description LIKE '%安静%' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          2.0,
+          680.0
+        ],
+        [
+          24.0,
+          1250.0
+        ],
+        [
+          39.0,
+          2080.0
+        ],
+        [
+          46.0,
+          2900.0
+        ]
+      ],
+      "row_count": 4,
+      "scalar": 2.0
+    },
+    "L4-002": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND description LIKE '%养宠物%' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          5.0,
+          900.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 5.0
+    },
+    "L4-003": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND description LIKE '%做饭%' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          23.0,
+          1380.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 23.0
+    },
+    "L4-004": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price, floor FROM house WHERE city = '深圳' AND district = '福田区' AND description LIKE '%有电梯%' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price",
+        "floor"
+      ],
+      "rows": [
+        [
+          8.0,
+          880.0,
+          "15楼"
+        ],
+        [
+          12.0,
+          1350.0,
+          "18楼"
+        ],
+        [
+          21.0,
+          1950.0,
+          "30楼"
+        ],
+        [
+          30.0,
+          2000.0,
+          "32楼"
+        ],
+        [
+          32.0,
+          2500.0,
+          "22楼"
+        ],
+        [
+          41.0,
+          2950.0,
+          "40楼"
+        ],
+        [
+          50.0,
+          3000.0,
+          "45楼"
+        ]
+      ],
+      "row_count": 7,
+      "scalar": 8.0
+    },
+    "L4-005": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND description LIKE '%拎包入住%' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          12.0,
+          1350.0
+        ],
+        [
+          37.0,
+          2700.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 12.0
+    },
+    "L4-006": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳'\n  AND (description LIKE '%豪华%' OR description LIKE '%精装%')\nORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          3.0,
+          750.0
+        ],
+        [
+          8.0,
+          880.0
+        ],
+        [
+          11.0,
+          1200.0
+        ],
+        [
+          20.0,
+          1850.0
+        ],
+        [
+          29.0,
+          1900.0
+        ],
+        [
+          31.0,
+          2200.0
+        ],
+        [
+          45.0,
+          2600.0
+        ],
+        [
+          40.0,
+          2800.0
+        ]
+      ],
+      "row_count": 8,
+      "scalar": 3.0
+    },
+    "L4-007": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND description LIKE '%超市%' ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          4.0,
+          820.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": 4.0
+    },
+    "L4-008": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳'\n  AND (description LIKE '%院子%' OR description LIKE '%花园%')\nORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          5.0,
+          900.0
+        ],
+        [
+          27.0,
+          1080.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 5.0
+    },
+    "L4-009": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND description LIKE '%海景%' AND price <= 2500 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          6.0,
+          980.0
+        ],
+        [
+          34.0,
+          2300.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 6.0
+    },
+    "L4-010": {
+      "mode": "scalar",
+      "gold_sql": "SELECT district, ROUND(AVG(price), 2) AS avg_price FROM house WHERE city = '深圳' GROUP BY district ORDER BY AVG(price) ASC LIMIT 1",
+      "columns": [
+        "district",
+        "avg_price"
+      ],
+      "rows": [
+        [
+          "光明区",
+          1456.0
+        ]
+      ],
+      "row_count": 1,
+      "scalar": "光明区"
+    },
+    "L4-011": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND description LIKE '%近地铁%' AND price <= 1500 ORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          1.0,
+          550.0
+        ],
+        [
+          12.0,
+          1350.0
+        ]
+      ],
+      "row_count": 2,
+      "scalar": 1.0
+    },
+    "L4-012": {
+      "mode": "id_set",
+      "gold_sql": "SELECT id, price FROM house WHERE city = '深圳' AND bedroom = 3\n  AND description LIKE '%有电梯%' AND price <= 3000\nORDER BY price ASC LIMIT 10",
+      "columns": [
+        "id",
+        "price"
+      ],
+      "rows": [
+        [
+          36.0,
+          2400.0
+        ],
+        [
+          43.0,
+          2450.0
+        ],
+        [
+          45.0,
+          2600.0
+        ],
+        [
+          37.0,
+          2700.0
+        ],
+        [
+          49.0,
+          2750.0
+        ],
+        [
+          40.0,
+          2800.0
+        ],
+        [
+          46.0,
+          2900.0
+        ],
+        [
+          41.0,
+          2950.0
+        ],
+        [
+          50.0,
+          3000.0
+        ]
+      ],
+      "row_count": 9,
+      "scalar": 36.0
+    },
+    "L5-001": {
+      "mode": "refusal",
+      "gold_sql": ""
+    },
+    "L5-002": {
+      "mode": "refusal",
+      "gold_sql": ""
+    },
+    "L5-003": {
+      "mode": "refusal",
+      "gold_sql": ""
+    },
+    "L5-004": {
+      "mode": "refusal",
+      "gold_sql": ""
+    },
+    "L5-005": {
+      "mode": "refusal",
+      "gold_sql": ""
+    },
+    "L5-006": {
+      "mode": "refusal",
+      "gold_sql": ""
+    },
+    "L5-007": {
+      "mode": "refusal",
+      "gold_sql": ""
+    },
+    "L5-008": {
+      "mode": "refusal",
+      "gold_sql": ""
+    },
+    "L5-009": {
+      "mode": "refusal",
+      "gold_sql": ""
+    },
+    "L5-010": {
+      "mode": "refusal",
+      "gold_sql": ""
+    }
+  }
+}

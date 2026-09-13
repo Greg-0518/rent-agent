@@ -1,0 +1,187 @@
+# Edge · 孪生对 —— 10 条，与 edge_empty.yaml **一一配对**
+#
+# ## 为什么需要这一档
+#
+# 空集用例的通过是**弱通过**：`count` 只看"返回了几行"，所以模型返回 0 行就算过。
+# 可 0 行有好几种成因，其中只有一种是好的：
+#
+#     正确理解了问句、条件都写对了、数据确实没有  → 该过
+#     把条件写严了 / 多加了一个过滤              → 也是 0 行，但**不该过**
+#     压根没理解问句，随手写个查不到的 SQL        → 也是 0 行，更不该过
+#
+# 单看一条空集用例，这三种分不开。配上孪生之后，**这对用例合起来才是一个信号**：
+#
+#     原用例（期望 0 行）      孪生（期望 N 行，N > 0）
+#     ────────────────────────────────────────────────
+#     0 行  ✓                  N 行  ✓     条件处理正确
+#     N' 行 ✗                  N 行  ✓     丢了条件（Edge-008 就是这么挂的）
+#     0 行  ✓                  0 行  ✗     **过度约束 / 没读懂问句** ← 只有孪生能抓
+#     N' 行 ✗                  0 行  ✗     完全没在按条件查
+#
+# 第三行是新增的区分力，也是这一档存在的理由。
+#
+# ## 孪生怎么造：控制变量，只删一个合取项
+#
+# 每条孪生 = 对应原用例的 `gold_sql` **恰好删掉一个 WHERE 合取项**，
+# 且删完结果非空。删哪个由 `eval/tools/plan_twins.py` 逐个枚举后人工选定：
+# 优先删掉"区"这个条件、保留真正考语义的那个（朝向/居室/价格/描述），
+# 因为按区过滤是简单题，语义映射才是要测的东西。
+#
+# ## 期望值为什么**不写** `count`
+#
+# 其余档的 `assert` 都显式写了 `count`。这里刻意省略：期望行数由 `gold_sql`
+# 执行后算出来（`make_golden.py` 落进 `eval/golden/text2sql.json`），
+# 单一事实来源。手写一个数字就多一处会跟数据脱节的地方——
+# 数据一改，手写的数不会自己更新，而它会**静默地把对的判成错的**。
+#
+# ## 数据划分跟随原用例
+#
+# 原用例是保留集的，孪生也是保留集（Edge-002T / Edge-006T）。
+# 配对的两条必须同进同出，否则收官跑保留集时只剩半边，配对就断了。
+
+- id: Edge-001T
+  tier: Edge
+  question: 深圳罗湖区的房子，帮我推荐10套
+  params: {city: 深圳, district: 罗湖区}
+  room_count: 10
+  assert: {mode: count}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '罗湖区'
+  notes: |
+    配 Edge-001（罗湖区+朝南 → 0 行）。删掉「朝南」，保留「区」→ 5 行。
+    **为什么删朝南而不是删区**：删区会得到 22 行，超过 Agent 的 `LIMIT 10`，
+    于是模型即使条件全写对也只会返回 10 行、判 FAIL——那不是模型的问题，
+    是 `count` 断言在结果被截断时失去区分力。
+    所以孪生的行数必须 ≤ `room_count`，这条约束由 audit_twins.py 把关。
+
+- id: Edge-002T
+  tier: Edge
+  holdout: true
+  question: 深圳的三居室，帮我推荐10套
+  params: {city: 深圳}
+  room_count: 10
+  assert: {mode: count}
+  gold_sql: >
+    SELECT id, price, bedroom FROM house
+    WHERE city = '深圳' AND bedroom = 3
+  notes: |
+    配 Edge-002（龙岗区+三居 → 0 行，保留集）。删掉「区」，保留「三居」——
+    全深圳三居有 9 套，都在别的区，所以原用例空、孪生非空。
+    考的是「三居室 → bedroom=3」这个语义映射是不是稳定。
+
+- id: Edge-003T
+  tier: Edge
+  question: 深圳光明区的房子，帮我推荐10套
+  params: {city: 深圳, district: 光明区}
+  room_count: 10
+  assert: {mode: count}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '光明区'
+  notes: |
+    配 Edge-003（光明区+500元以下 → 0 行）。
+    这条只能删价格：**500 元在整张表里都查不到**（全表最低 550），
+    所以"删掉区、保留价格"出来还是空集，不构成孪生。删价格后光明区 5 套。
+
+- id: Edge-004T
+  tier: Edge
+  question: 深圳有海景的房子，帮我推荐10套
+  params: {city: 深圳}
+  room_count: 10
+  assert: {mode: count}
+  gold_sql: >
+    SELECT id, price, description FROM house
+    WHERE city = '深圳' AND description LIKE '%海景%'
+  notes: |
+    配 Edge-004（坪山区+海景 → 0 行）。删掉「区」，保留「海景」。
+    海景是原用例的考点（描述文本检索），孪生证明这 5 套确实存在、SQL 能查到——
+    若模型孪生也返回 0 行，说明它没做 LIKE 检索，而不是"数据里没有"。
+
+- id: Edge-005T
+  tier: Edge
+  question: 深圳朝南的一居室，帮我推荐10套
+  params: {city: 深圳}
+  room_count: 10
+  assert: {mode: count}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND bedroom = 1 AND orientation = '朝南'
+  notes: |
+    配 Edge-005（罗湖区+一居+朝南 → 0 行）。删掉「区」，保留「一居」和「朝南」。
+    这条孪生是**双条件**的：原用例三条件交叉为空，删掉区之后剩两个条件仍有 8 套。
+    朝南的一居室确实存在，只是不在罗湖——正好把"罗湖"这个真正的排除项隔离出来。
+
+- id: Edge-006T
+  tier: Edge
+  holdout: true
+  question: 深圳盐田区的房子，帮我推荐10套
+  params: {city: 深圳, district: 盐田区}
+  room_count: 10
+  assert: {mode: count}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '盐田区'
+  notes: |
+    配 Edge-006（盐田区+900元以下 → 0 行，保留集）。
+    同 Edge-003T：900 低于盐田区最低价 980，所以只能删价格这一项。
+
+- id: Edge-007T
+  tier: Edge
+  question: 深圳带小院子的房子，帮我推荐10套
+  params: {city: 深圳}
+  room_count: 10
+  assert: {mode: count}
+  gold_sql: >
+    SELECT id, price, description FROM house
+    WHERE city = '深圳'
+      AND (description LIKE '%院子%' OR description LIKE '%花园%')
+  notes: |
+    配 Edge-007（福田区+院子/花园 → 0 行）。删掉「区」，保留描述检索。
+    与 Edge-009T 的分工：**这条保留描述条件**，专门验"院子/花园能不能被 LIKE 检出来"
+    （2 套：id 5 坪山、id 27 光明）。009T 反过来，验"南山区的数据在不在"。
+
+- id: Edge-008T
+  tier: Edge
+  question: 深圳龙华区的房子，帮我推荐10套
+  params: {city: 深圳, district: 龙华区}
+  room_count: 10
+  assert: {mode: count}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '龙华区'
+  notes: |
+    配 Edge-008（龙华区+3000元以上 → 0 行）。**这条是本轮基线抓到的真失败**：
+    模型在原用例上把 `price > 3000` 整个丢了，换回 5 行，判 CONDITION_MAPPED_WRONG。
+    孪生正好是"丢条件之后应该得到的那 5 行"——配对一起看，
+    就能区分"模型不知道龙华区有房"和"模型丢了个条件"。
+
+- id: Edge-009T
+  tier: Edge
+  question: 深圳南山区的房子，帮我推荐10套
+  params: {city: 深圳, district: 南山区}
+  room_count: 10
+  assert: {mode: count}
+  gold_sql: >
+    SELECT id, price FROM house
+    WHERE city = '深圳' AND district = '南山区'
+  notes: |
+    配 Edge-009（南山区+花园 → 0 行）。这条**删的是描述条件**，与 Edge-007T 相对：
+    007T 验描述检索，009T 验南山区本身有 7 套。
+    刻意不跟 007T 用同一个删法——否则两条孪生的问句会一模一样，白跑一遍。
+
+- id: Edge-010T
+  tier: Edge
+  holdout: true
+  question: 深圳月租超过2500元的房子，帮我推荐10套
+  params: {city: 深圳, budget_min: 2500}
+  room_count: 10
+  assert: {mode: count}
+  gold_sql: >
+    SELECT id, price, bedroom FROM house
+    WHERE city = '深圳' AND price > 2500
+  notes: |
+    配 Edge-010（一居室+2500元以上 → 0 行，保留集 → 孪生同步保留）。
+    删掉「一居」，保留价格 → 7 行（与 18 行那个删法同理：18 行会超过 LIMIT 10，
+    由 audit_twins.py 的行数约束挡下）。原用例的空集**完全是居室条件造成的**，
+    价格那一半在别的户型上是查得到结果的。
