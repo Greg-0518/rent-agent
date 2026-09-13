@@ -245,27 +245,52 @@ def test_id_set_with_no_shared_column_is_unverifiable(golden, cases):
     assert not r.passed
 
 
-def test_edge_relaxed_fallback_is_unverifiable_and_records_counts(golden, cases):
-    """模型先按问句查（0 行）、再主动放宽条件补一批 → 存疑，且记下每条 SQL 的行数。
+def test_edge_strict_then_widened_passes_on_the_strict_query(golden, cases):
+    """模型先按问句查（0 行）、再主动放宽补一批 → **判通过**，并记下命中的是第几条。
 
     实测中最常见的一种 Edge 轨迹：模型确认罗湖区没有朝南的，
     于是**主动放宽到整个深圳**，并在答案里写明"该区没有，以下是其他区的"。
-    它既没编造、也没答对——它回答了另一个问题。断言器判不了，标存疑不计通过。
-    `executed_row_counts` 让报告能一眼把它和"一上来就返回了不该有的行"区分开。
+
+    ⚠ **这条用例的期望值在改动 1 里被反转过一次，别照旧印象改回去。**
+    原判"存疑"的理由是"它回答了另一个问题"。但这条用例问的就是"有没有"，
+    **黄金结果集是空集**——那条严格查询查到的 0 行，本身就是正确答案。
+    判"存疑"等于因为它多附了一份参考、而否认它答对了主问题。
+
+    所以现在的判据是：**首条（严格）对上黄金 → 通过**，
+    用 `matched_sql_index=0` 把它和"乱撒查询撞中的"区分开（后者会落在靠后的位置）。
     """
     t = _trace(
         ["SELECT id FROM house WHERE city='深圳' AND district='罗湖区' AND orientation='朝南'",
          "SELECT id FROM house WHERE city='深圳' AND district='罗湖区'"],
         output="罗湖区目前没有朝南的房源，以下是其他区域的参考",
     )
-    # 判据是"前面某条 SQL 查到过 0 行"，不是答案里含某个字——
+    # 判据是**结构**（每条 SQL 的执行结果 vs 黄金），不是答案里含某个字——
     # 所以这段答案写"没有"而不是"无"，照样能判出来。
     r = assert_case(cases["Edge-001"], t, golden["Edge-001"])
-    assert r.kind == UNVERIFIABLE
-    assert not r.passed
-    assert r.detail["executed_row_counts"] == [0, 5]
-    assert "查到空集" in r.reason
-    assert "另一个问题" in r.reason
+    assert r.kind == PASS
+    assert r.detail["matched_sql_index"] == 0
+    assert r.detail["n_sql_executed"] == 2
+    assert r.detail["matched_earlier_query"] is True
+    assert "第 1/2 条" in r.reason
+
+
+def test_widening_is_not_a_free_pass(golden, cases):
+    """放宽本身不构成通过——**必须有一条真的对上了黄金**。
+
+    这是上一条的对照组：改动 1 让断言器回看前面每一条 SQL，
+    宽松度上升了。这里钉住它的边界——两条都不对，照样判失败。
+
+    用 L1-002（黄金非空）而不是 Edge-001（黄金为空）：
+    黄金非空时"查到 0 行"就不再是正确答案，回看也就救不了它。
+    """
+    t = _trace(
+        ["SELECT id FROM house WHERE city='深圳' AND bedroom=2 LIMIT 10",
+         "SELECT id FROM house WHERE city='深圳' AND district='南山区' LIMIT 10"],
+    )
+    r = assert_case(cases["L1-002"], t, golden["L1-002"])
+    assert r.kind == FAIL
+    assert r.detail["matched_sql_index"] is None
+    assert r.detail["n_sql_executed"] == 2
 
 
 def test_edge_empty_result_passes(golden, cases):
