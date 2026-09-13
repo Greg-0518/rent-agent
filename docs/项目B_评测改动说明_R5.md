@@ -310,8 +310,12 @@ L3-001 正好命中：黄金 `>= 30` 得 4 行，翻成 `> 30` 得 3 行 = 模�
 | [eval/tools/rescore.py](eval/tools/rescore.py) | 新增 | 离线重判：拿已存 trace 用新断言器重判，不重跑 Agent |
 | [eval/tools/probe_route.py](eval/tools/probe_route.py) | 新增 | 路由探针：强制指定意图，区分"路由问题"与"能力问题" |
 
-**没动**：`src/` 下**任何**文件（生产代码零改动）、`eval/cases/` 里除 L4-006 外的用例、
-`eval/conftest.py`、种子数据（`house` 表）。
+**没动**：`eval/cases/` 里除 L4-006 外的用例、`eval/conftest.py`、种子数据（`house` 表）。
+
+> ⚠ **本节最初写着「`src/` 下任何文件都不动（生产代码零改动）」，已被 §12 推翻** ——
+> 本轮后来修了 D6（跨会话 `KeyError`），改了 `src/agent/common/store.py` 与
+> `src/agent/node/recommend.py` 两个文件。§6 那处 `UserMessage` 改动不算在"没动"里，
+> 它本来就在 [`main.py`](src/agent/node/main.py)。以 §12 为准。
 
 ---
 
@@ -330,7 +334,32 @@ L3-001 正好命中：黄金 `>= 30` 得 4 行，翻成 `> 30` 得 3 行 = 模�
    四种断言模式全覆盖（id_set 9/scalar 1/count 7/refusal 2）、
    特殊形态全覆盖（3 对空集孪生、2 条安全层拒绝、7 条含边界措辞、2 条统计聚合）。
    所以"Edge 占 30% 偏高"不再是问题 —— 那是比例视角，不是覆盖视角。见 §11。
-5. **`recommend.py` 跨会话 `KeyError`**（R4 的 D6）—— 未修。
+5. ~~**`recommend.py` 跨会话 `KeyError`**（R4 的 D6）~~ —— ✅ **已修**，见 §12。
+6. **L3-010 的用例形式要不要留** —— 它的问句是元问题式的（「描述里同时提到精装和近」），
+   考的是"模型能不能按元描述构造条件"，与其余用例"给自然语言需求"的形式不同。
+   本轮不动，**等你定**：留着（当作一条特殊的组合条件用例）还是改写句。
+7. **`reserve.py` 里 `ReservedInfo` 模型实例入列表（疑似同一族问题，未验证）** ——
+   [reserve.py:189](src/agent/node/reserve.py#L189) 用 `setdefault(...).append(ReservedInfo(...))`
+   塞的是**模型实例**，而 [main.py:96-98](src/agent/node/main.py#L96) 用 `item.get('order_id')` 读
+   —— 模型实例没有 `.get`。是否真会炸取决于 store 在 `put` 时是否序列化
+   （`InMemoryStore` 与生产 store 行为可能不同），**先验证再定性**：
+   ```python
+   from langgraph.store.memory import InMemoryStore
+   store = InMemoryStore()
+   store.put(("u", "preferences"), "k",
+             {"reserved_info": [ReservedInfo(order_id="1", title="t", phone_number="p")]})
+   print(type(store.search(("u", "preferences"))[0].value["reserved_info"][0]))
+   ```
+8. **`user_id` 兜底策略三处不一致** —— [main.py:68](src/agent/node/main.py#L68) 没兜底
+   （可能造出 `(None, "preferences")` 这个命名空间）、recommend.py 兜 `"default"`、
+   [reserve.py:171](src/agent/node/reserve.py#L171) 直接返回提示语。
+9. **store 值的别名问题** —— [main.py:72](src/agent/node/main.py#L72) 把 store 的 value 对象
+   直接塞进 State；[recommend.py:195](src/agent/node/recommend.py#L195) 拿到同一对象后
+   就地改、再 put。当前"改了就 put"使其自洽，但"先改后 put 失败"会留下内存里已被改动的条目。
+10. **harness 支持多会话用例**（用例级 store + 会话级 checkpointer + yaml 多轮字段）——
+    本轮按你选的最小范围**没做**。设计文档里已有目标语义
+    （[实施计划 §2.3 之后](docs/项目B_实施计划_M0-M2.md)，"隔离的粒度应当是用例，不是会话"），
+    而且这次 D6 正是"读方向分支一次都没进过"造成的，需要时单开一轮。
 
 ---
 
@@ -459,3 +488,143 @@ R5 前几版里"剩下 2 条 = L3-001 + L3-010"的说法，按此更正为"剩�
 > 会把 UTF-8 当 ANSI 读，中文全乱码，`ConvertFrom-Json` 也会失败 —— 这不是文件坏了。
 >
 > 另外：**PowerShell 里别用 `-c` 传含引号的 SQL**，解析器会把它当命令。写临时脚本文件跑。
+
+---
+
+## 12. 修 D6：跨会话读用户偏好时的 `KeyError`
+
+**这是本轮唯一一处生产代码改动**（前 11 节全是评测侧的）。
+
+### 症状与根因
+
+用户第一次只给了预算上限，第二个会话进来直接崩在**第一个节点**：
+
+```
+KeyError: 'budget_min'
+```
+
+不是"某条链路答得不好"，是**整个会话在入口就死**——`get_store_info` 是图的第一个节点。
+
+根因是写侧与读侧对「键集合」的假设不一致：
+
+| 侧 | 位置 | 行为 |
+|---|---|---|
+| 写 | `recommend.py` `prefs.model_dump(exclude_none=True)` | **键集合随数据而变**——只给了上限时，落库的 dict 里根本没有 `budget_min` 这个键 |
+| 读 | `recommend.py` 5 处裸下标 `pref["budget_min"]` | 缺键即 `KeyError` |
+
+**为什么只在第二个会话炸**：同一会话内新用户分支把不带 `exclude_none` 的完整键集合
+写进了 state；只有新会话的 `get_store_info` 才重新从 store 读那次 `exclude_none` 的结果。
+**同一会话内永远不会暴露**——这正是一直没被发现的原因。
+
+**为什么评测集也没抓到**：89 条用例全是单轮的，每条还拿**全新 store + 独立 `user_id`**
+（`eval-<case_id>`），于是"store 里已经有这个用户的偏好"这个状态**在评测里压根构造不出来**：
+写方向的 `store.put` 每轮都跑，**读方向的分支一次都没进过**。
+
+### 改了什么
+
+**只有读侧**，统一到一个入口：
+
+| 文件 | 改动 |
+|---|---|
+| `src/agent/common/store.py` | 新增 `read_preferences(value) -> UserPreferences` |
+| `src/agent/node/recommend.py` | 2 个读点（state 里的偏好、store 里的偏好）改走它，消掉 5 处裸下标 |
+
+**没改写侧的 `exclude_none=True`** —— 读侧正规化能同时容下**修之前就已落库的旧数据**；
+写侧改法只管未来写入，历史行照样崩。
+
+**一个必须保留的细节**：`prefs = prefs_result[0].value`（原始 dict）**没删**。
+写回路径（就地改 + `store.put`）必须继续用它——`read_preferences` 走 pydantic 会丢掉
+`UserPreferences` 没声明的键，而那正是 `reserve.py` 存进来的 `reserved_info`。
+所以现在是**一读一写两个表示**：读预算走 `stored`，写回 store 走 `prefs`。已在代码里写明理由。
+
+### 验证（三件都可复核）
+
+**1. 端到端：修前崩、修后通**（`eval/results/probe_cross_session-fixed.txt`）
+
+```
+会话一（首轮，store 为空）
+   OK   user_preferences={'budget_min': None, 'budget_max': 3000.0, 'reserved_info': None}
+会话二（同一用户，新会话）
+   OK   user_preferences={'budget_max': 3000.0}   ← 读到了会话一写的值
+store 里的原始内容：
+  value= {'budget_max': 3000.0}
+```
+
+会话二读到的正是 `{'budget_max': 3000.0}` —— **没有 `budget_min` 键的那个形状**，
+也就是以前必然 KeyError 的那个输入。
+
+**2. 单测：新增 10 条，零成本**（`tests/unit_tests/test_store_preferences.py`，不依赖库/模型）
+
+`39 → 49 passed`。其中第 10 条是**源码级守卫**（断言 `recommend.py` 里不再出现
+`["budget_min"]`/`["budget_max"]`）。守卫的有效性也验证过——拿 HEAD 的旧版本对照：
+
+```
+旧代码命中 5 处（line 66/68/69/196/197）   ← 守卫在修之前会红，它有效
+当前代码 无命中
+```
+
+> 改前 `tests/` 下 grep `budget_min|budget_max|reserved_info` **零匹配**：
+> 偏好读写路径此前**完全没有测试**。
+
+**3. 没碰坏既有行为**：smoke 20 条（见 §13）。
+
+### 教训
+
+**"写方向每轮都跑"不等于"这条链路被测过"。** 89 条用例的隔离粒度是**会话**，
+每个用例一个全新 store + 全新 `user_id`，于是所有"读已有数据"的分支
+**结构性地不可达**——不是没测到，是**造不出来**。
+`probe_cross_session.py` 的 docstring 早就写了这一条，但直到这轮才把修复做掉。
+
+这也解释了为什么它能在多次全量回归里活着：**它不在任何一条用例的路径上**。
+覆盖率看的是"代码被执行过"，而这里是"状态被构造过"——后者不会出现在任何覆盖率数字里。
+
+---
+
+## 13. 改动后的 smoke 回归（`smoke-d6`）
+
+**20 条 smoke 用例，19/20 = 95.0%**，`fail=1 / 存疑=0 / 不可达=0`。
+
+| 口径 | smoke-dec1（早先） | **smoke-d6（本次）** |
+|---|---|---|
+| 完成率 | 13/20 = 65.0% | **19/20 = 95.0%** |
+| 分布 | pass=13 fail=2 存疑=1 不可达=4 | **pass=19 fail=1 存疑=0 不可达=0** |
+
+**差异来自 §6 的路由修复**（4 条不可达转可达），**不是** §12 的 D6 修复
+——两者不是同一批改动，这里读的是"有没有变坏"，不是"D6 带来了多少分"。
+
+**唯一失败的是 L3-001**，归因 `BOUNDARY_OFF_BY_ONE`：模型把「30楼**以上**」写成 `> 30`，
+漏掉 id 21 那套 30 楼的。**这是已知的既有失败**，与偏好读写无关
+（它 1 条 SQL、无重试、无守卫拦截；`full-dec2-rescored`、`full-dec3` 里也都失败）。
+
+### 专门查了执行异常（这是 D6 改动真正的风险所在）
+
+改动落在 `collect_user_info`，每个 `recommend_house` 用例都会走到。若有隐患，
+表现是**轨迹抛异常**而不是判定变化，所以单独查了一遍：
+
+```
+总记录 21（1 行 run_meta + 20 条用例）
+trace.ok=False: 0
+有 error 字段: 0
+判定分布: {pass: 19, fail: 1}
+```
+
+**零执行异常。** 另外断言器自测 `pytest eval/test_asserters.py -q` → **20 passed**
+（注意 `-m smoke` **不跑**自测——它没有 smoke 标记，别拿 smoke 的绿当作自测的绿）。
+
+---
+
+## 14. 本轮全部提交（按批次）
+
+| commit | 内容 | 范围 |
+|---|---|---|
+| `a4c64a9` | src：工作区既有的第三方改动 | 非本轮工作 |
+| `8e3ecd0` | src(guard)：SQL 执行安全层 | 生产 |
+| `e1102ac` | 意图分类：给 7 个标签补定义（§6） | 生产 |
+| `68616fe` | eval：评测 harness + 断言器改动 | 评测 |
+| `3edf20e` | docs：R5 + 更正 R4 | 文档 |
+| `6ca655c` | eval(asserters)：修正失效自测 + 补反向对照 | 评测 |
+| `cff4d8f` | eval(results)：full-dec3 轨迹 | 证据 |
+| `817d55d` | docs：R5 §10/§11 | 文档 |
+| *见 `git log`* | **src：修 D6 跨会话 KeyError（§12）** | **生产** |
+| *见 `git log`* | tests：偏好读写单测（§12） | 测试 |
+| *见 `git log`* | eval/docs：D6 的探针输出与文档（§12/§13） | 证据+文档 |
