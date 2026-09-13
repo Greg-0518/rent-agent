@@ -497,13 +497,15 @@ R5 前几版里"剩下 2 条 = L3-001 + L3-010"的说法，按此更正为"剩�
 
 ### 症状与根因
 
-用户第一次只给了预算上限，第二个会话进来直接崩在**第一个节点**：
+用户第一次只给了预算上限，**下一次开口**（新会话，或同一会话发第二条消息）直接崩在
+**第一个节点**：
 
 ```
 KeyError: 'budget_min'
 ```
 
-不是"某条链路答得不好"，是**整个会话在入口就死**——`get_store_info` 是图的第一个节点。
+不是"某条链路答得不好"，是**整个会话在入口就死**——`get_store_info` 是图的**入口
+节点**（`graph.py` 的 `add_edge(START, "get_store_info")`），而且**每轮都会重跑**。
 
 根因是写侧与读侧对「键集合」的假设不一致：
 
@@ -512,9 +514,21 @@ KeyError: 'budget_min'
 | 写 | `recommend.py` `prefs.model_dump(exclude_none=True)` | **键集合随数据而变**——只给了上限时，落库的 dict 里根本没有 `budget_min` 这个键 |
 | 读 | `recommend.py` 5 处裸下标 `pref["budget_min"]` | 缺键即 `KeyError` |
 
-**为什么只在第二个会话炸**：同一会话内新用户分支把不带 `exclude_none` 的完整键集合
-写进了 state；只有新会话的 `get_store_info` 才重新从 store 读那次 `exclude_none` 的结果。
-**同一会话内永远不会暴露**——这正是一直没被发现的原因。
+**为什么不是当场就炸**：那一轮走的是写侧新用户分支，它写进 state 的是
+`prefs.model_dump()`（**不带** `exclude_none`），键齐全，所以同一轮读不到缺键版本。
+
+**什么时候炸：下一次调用**。`get_store_info` 是图的入口且**每轮重跑**，并且
+**无条件**用 store 里的值覆盖 state（`node/main.py:70-72` 没有条件判断），于是上一轮
+留在 state 里的齐全版本被盖成缺键版本。两种触发都实测过：
+
+| 触发 | 是否命中 |
+|---|---|
+| 新会话（新 thread，同 `user_id`） | 命中 |
+| **同一会话发第二条消息** | **命中也** |
+
+第二行是这轮才发现的。原先的说法是"同一会话内 state 里有齐全版本，所以安全"——
+**不成立**，入口每轮都会把它盖掉。这不只是措辞问题，它把**严重度也说小了**：
+用户不必等下次再来，**同一次对话里说第二句就崩**。
 
 **为什么评测集也没抓到**：89 条用例全是单轮的，每条还拿**全新 store + 独立 `user_id`**
 （`eval-<case_id>`），于是"store 里已经有这个用户的偏好"这个状态**在评测里压根构造不出来**：
@@ -533,25 +547,51 @@ KeyError: 'budget_min'
 写侧改法只管未来写入，历史行照样崩。
 
 **一个必须保留的细节**：`prefs = prefs_result[0].value`（原始 dict）**没删**。
-写回路径（就地改 + `store.put`）必须继续用它——`read_preferences` 走 pydantic 会丢掉
-`UserPreferences` 没声明的键，而那正是 `reserve.py` 存进来的 `reserved_info`。
-所以现在是**一读一写两个表示**：读预算走 `stored`，写回 store 走 `prefs`。已在代码里写明理由。
+写回路径（就地改 + `store.put`）继续用它，所以现在是**一读一写两个表示**：
+读预算走 `stored`（正规化、缺键即 None），写回 store 走 `prefs`（原始 dict）。
+
+> ⚠ **这一条我第一版给的理由是错的，已更正。** 原文写的是"`read_preferences` 走
+> pydantic 会丢掉 `reserved_info`"——经核实**不成立**：`reserved_info` 在
+> `UserPreferences` 里**有声明**（`store.py:45`），实测 round-trip 之后它还在，不丢。
+> 真正会丢的只有**未声明**的键，而今天**不存在**这种键（三处 `store.put` 全都经过
+> `UserPreferences`，已逐处核对）。
+> 保留原始 dict 仍然是对的选择，但理由是另外两条：① 对"将来库里多出未声明的键"
+> 免疫（没有任何机制在强制保证这一点）② 保持"少写"——`model_dump` 会把
+> `exclude_none` 省掉的键补成显式 `None` 再存回去，抵消写侧意图。
+> 顺带把 `prefs` 就是 store **活对象**这条别名风险也写进了注释（指向 §8 第 5 项）。
+>
+> **教训：注释里给"为什么"要给到可验证的那一层。** "某个库会丢掉某个字段"这种
+> 断言写下来之前应该先跑一遍——错的理由比没有理由更糟，它会把下一个读代码的人
+> 引到错误的防范方向上。
 
 ### 验证（三件都可复核）
 
-**1. 端到端：修前崩、修后通**（`eval/results/probe_cross_session-fixed.txt`）
+**1. 端到端：修前两处都红、修后两处都绿**
+（`eval/results/probe_cross_session-before.txt` 与 `...-fixed.txt`——同一个脚本、
+同样三次调用，只差两个源文件的版本）
+
+| 调用 | 修前 | 修后 |
+|---|---|---|
+| 会话一·第一轮（store 为空） | `OK` | `OK` |
+| 会话一·**第二轮（同一 thread）** | **`KeyError: 'budget_min'`** | `OK  user_preferences={'budget_max': 3000.0}` |
+| 会话二（新会话） | **`KeyError: 'budget_min'`** | `OK  user_preferences={'budget_max': 3000.0}` |
+
+后两行打出来的 `{'budget_max': 3000.0}` —— **没有 `budget_min` 键的那个形状** ——
+正是以前必然 KeyError 的输入。所以这两轮是**真的走到了**那条曾崩掉的路径并且
+活了下来，不是"路径没被覆盖到所以显示 OK"。
+
+修前复现（三段，最后一段负责还原）：
 
 ```
-会话一（首轮，store 为空）
-   OK   user_preferences={'budget_min': None, 'budget_max': 3000.0, 'reserved_info': None}
-会话二（同一用户，新会话）
-   OK   user_preferences={'budget_max': 3000.0}   ← 读到了会话一写的值
-store 里的原始内容：
-  value= {'budget_max': 3000.0}
+git checkout cff4d8f -- src/agent/common/store.py src/agent/node/recommend.py
+.\venv\Scripts\python.exe eval\tools\probe_cross_session.py
+git checkout HEAD -- src/agent/common/store.py src/agent/node/recommend.py
 ```
 
-会话二读到的正是 `{'budget_max': 3000.0}` —— **没有 `budget_min` 键的那个形状**，
-也就是以前必然 KeyError 的那个输入。
+> 探针这轮也跟着改了：`run()` 多了个可选 `checkpointer` 参数。原来每次 `run()` 都
+> 新建 `MemorySaver()`，**thread 状态根本不跨调用**，所以它只能测"新会话"那一半
+> ——这也正是"同一会话第二轮也会炸"这件事一直没被发现的原因。传同一个
+> checkpointer 才是"同一会话的下一轮"。现在两种触发都在回归覆盖里。
 
 **2. 单测：新增 10 条，零成本**（`tests/unit_tests/test_store_preferences.py`，不依赖库/模型）
 
@@ -625,6 +665,17 @@ trace.ok=False: 0
 | `6ca655c` | eval(asserters)：修正失效自测 + 补反向对照 | 评测 |
 | `cff4d8f` | eval(results)：full-dec3 轨迹 | 证据 |
 | `817d55d` | docs：R5 §10/§11 | 文档 |
-| *见 `git log`* | **src：修 D6 跨会话 KeyError（§12）** | **生产** |
-| *见 `git log`* | tests：偏好读写单测（§12） | 测试 |
-| *见 `git log`* | eval/docs：D6 的探针输出与文档（§12/§13） | 证据+文档 |
+| `678f856` | **src：修 D6 跨会话 KeyError（§12）** | **生产** |
+| `78ea6ea` | eval：探针转回归检查 + 证据 | 证据 |
+| `8d17c87` | docs：R5 §12/§13/§14 | 文档 |
+| `adad86d` | tests：偏好读写 / guard 接线 / SQL guard 单测 | 测试 |
+| `a75a384` | .claude：评测 harness 方法论沉淀为 skill | 方法论 |
+| `d00bf76` | src：更正 D6 注释里给错的理由（§12） | 生产（仅注释） |
+| `3ccf12e` | src/tests：更正 D6 **触发条件**——同会话第二轮也炸 | 注释（零行为变化） |
+| `1e5ed1b` | eval：探针补同会话第二轮 + 修前证据文件 | 证据 |
+| *见 `git log`* | docs：R5 §12 同步触发条件与两处更正 | 文档 |
+
+> `.claude/settings.local.json`（本机权限白名单，含 `D:\` 绝对路径与 `PowerShell(*)`
+> 通配）**未提交**，留在工作区。
+> `scripts/langgraph_log.txt` 的删除是**别人** staged 的，一直在工作区未提交，
+> 不属于本轮。`pyproject.toml` 的修改同理。
